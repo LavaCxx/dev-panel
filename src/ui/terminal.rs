@@ -13,6 +13,7 @@ use ratatui::{
 };
 
 /// 绘制终端面板
+#[allow(clippy::too_many_arguments)]
 pub fn draw_terminal_panel(
     frame: &mut Frame,
     area: Rect,

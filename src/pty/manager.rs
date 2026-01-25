@@ -44,6 +44,7 @@ impl PtyManager {
     }
 
     /// 创建执行指定命令的 PTY
+    #[allow(clippy::too_many_arguments)]
     pub fn create_command(
         &self,
         id: &str,
@@ -82,6 +83,7 @@ impl PtyManager {
     }
 
     /// 内部方法：创建 PTY
+    #[allow(clippy::too_many_arguments)]
     fn create_pty(
         &self,
         id: &str,
