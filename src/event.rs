@@ -76,7 +76,7 @@ fn handle_mouse_event(
         MouseEventKind::ScrollUp => {
             match state.focus {
                 FocusArea::Sidebar => {
-                    state.select_prev_project();
+                    // 侧边栏不使用滚轮切换项目（幅度过大）
                 }
                 FocusArea::DevTerminal => {
                     // Dev Terminal 向上滚动（查看更早的 log）
@@ -93,7 +93,7 @@ fn handle_mouse_event(
         MouseEventKind::ScrollDown => {
             match state.focus {
                 FocusArea::Sidebar => {
-                    state.select_next_project();
+                    // 侧边栏不使用滚轮切换项目（幅度过大）
                 }
                 FocusArea::DevTerminal => {
                     // Dev Terminal 向下滚动（查看更新的 log）

@@ -113,21 +113,6 @@ impl Project {
         self.dev_started_at = None;
     }
 
-    /// 获取 Dev Server 运行时长（格式化字符串）
-    pub fn dev_uptime(&self) -> Option<String> {
-        self.dev_started_at.map(|start| {
-            let elapsed = start.elapsed();
-            let secs = elapsed.as_secs();
-            if secs < 60 {
-                format!("{}s", secs)
-            } else if secs < 3600 {
-                format!("{}m{}s", secs / 60, secs % 60)
-            } else {
-                format!("{}h{}m", secs / 3600, (secs % 3600) / 60)
-            }
-        })
-    }
-
     /// 获取显示名称（优先使用别名）
     pub fn display_name(&self) -> &str {
         self.alias.as_deref().unwrap_or(&self.name)

@@ -128,7 +128,8 @@ impl PtyHandle {
     }
 
     /// Windows 上暂停进程
-    /// 通过遍历所有线程并暂停它们来实现
+    /// 通过遍历整个进程树并暂停所有线程来实现
+    /// 这样可以确保子进程（如 npm 启动的 node.js）也被暂停
     #[cfg(windows)]
     pub fn suspend(&mut self) -> anyhow::Result<bool> {
         use windows::Win32::Foundation::CloseHandle;
@@ -140,8 +141,11 @@ impl PtyHandle {
         if let Some(pid) = self.pid {
             if !self.suspended {
                 unsafe {
+                    // 获取整个进程树（包括所有子进程、孙进程等）
+                    let process_tree = get_process_tree(pid)?;
+
                     // 创建线程快照
-                    let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)?;
+                    let thread_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)?;
 
                     let mut entry = THREADENTRY32 {
                         dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
@@ -150,10 +154,10 @@ impl PtyHandle {
 
                     let mut suspended_count = 0;
 
-                    if Thread32First(snapshot, &mut entry).is_ok() {
+                    if Thread32First(thread_snapshot, &mut entry).is_ok() {
                         loop {
-                            // 只处理属于目标进程的线程
-                            if entry.th32OwnerProcessID == pid {
+                            // 暂停属于进程树中任何进程的线程
+                            if process_tree.contains(&entry.th32OwnerProcessID) {
                                 if let Ok(thread_handle) =
                                     OpenThread(THREAD_SUSPEND_RESUME, false, entry.th32ThreadID)
                                 {
@@ -164,13 +168,13 @@ impl PtyHandle {
                                 }
                             }
 
-                            if Thread32Next(snapshot, &mut entry).is_err() {
+                            if Thread32Next(thread_snapshot, &mut entry).is_err() {
                                 break;
                             }
                         }
                     }
 
-                    let _ = CloseHandle(snapshot);
+                    let _ = CloseHandle(thread_snapshot);
 
                     if suspended_count > 0 {
                         self.suspended = true;
@@ -183,6 +187,7 @@ impl PtyHandle {
     }
 
     /// Windows 上恢复进程
+    /// 恢复整个进程树中的所有线程
     #[cfg(windows)]
     pub fn resume(&mut self) -> anyhow::Result<bool> {
         use windows::Win32::Foundation::CloseHandle;
@@ -194,8 +199,11 @@ impl PtyHandle {
         if let Some(pid) = self.pid {
             if self.suspended {
                 unsafe {
+                    // 获取整个进程树（包括所有子进程、孙进程等）
+                    let process_tree = get_process_tree(pid)?;
+
                     // 创建线程快照
-                    let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)?;
+                    let thread_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)?;
 
                     let mut entry = THREADENTRY32 {
                         dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
@@ -204,10 +212,10 @@ impl PtyHandle {
 
                     let mut resumed_count = 0;
 
-                    if Thread32First(snapshot, &mut entry).is_ok() {
+                    if Thread32First(thread_snapshot, &mut entry).is_ok() {
                         loop {
-                            // 只处理属于目标进程的线程
-                            if entry.th32OwnerProcessID == pid {
+                            // 恢复属于进程树中任何进程的线程
+                            if process_tree.contains(&entry.th32OwnerProcessID) {
                                 if let Ok(thread_handle) =
                                     OpenThread(THREAD_SUSPEND_RESUME, false, entry.th32ThreadID)
                                 {
@@ -218,13 +226,13 @@ impl PtyHandle {
                                 }
                             }
 
-                            if Thread32Next(snapshot, &mut entry).is_err() {
+                            if Thread32Next(thread_snapshot, &mut entry).is_err() {
                                 break;
                             }
                         }
                     }
 
-                    let _ = CloseHandle(snapshot);
+                    let _ = CloseHandle(thread_snapshot);
 
                     if resumed_count > 0 {
                         self.suspended = false;
@@ -260,4 +268,63 @@ pub enum PtyEvent {
     },
     /// 错误发生
     Error { pty_id: String, message: String },
+}
+
+/// Windows 辅助函数：获取整个进程树
+/// 递归查找指定 PID 的所有子进程、孙进程等
+/// 返回包含根进程及所有后代进程的 PID 集合
+#[cfg(windows)]
+unsafe fn get_process_tree(root_pid: u32) -> anyhow::Result<std::collections::HashSet<u32>> {
+    use std::collections::HashSet;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
+    };
+
+    let mut result = HashSet::new();
+    result.insert(root_pid);
+
+    // 创建进程快照
+    let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
+
+    let mut entry = PROCESSENTRY32 {
+        dwSize: std::mem::size_of::<PROCESSENTRY32>() as u32,
+        ..Default::default()
+    };
+
+    // 构建父子关系映射
+    // Key: 父进程 PID, Value: 子进程 PID 列表
+    let mut parent_to_children: std::collections::HashMap<u32, Vec<u32>> =
+        std::collections::HashMap::new();
+
+    if Process32First(snapshot, &mut entry).is_ok() {
+        loop {
+            parent_to_children
+                .entry(entry.th32ParentProcessID)
+                .or_default()
+                .push(entry.th32ProcessID);
+
+            if Process32Next(snapshot, &mut entry).is_err() {
+                break;
+            }
+        }
+    }
+
+    let _ = CloseHandle(snapshot);
+
+    // 使用 BFS 遍历整个进程树
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(root_pid);
+
+    while let Some(current_pid) = queue.pop_front() {
+        if let Some(children) = parent_to_children.get(&current_pid) {
+            for &child_pid in children {
+                if result.insert(child_pid) {
+                    queue.push_back(child_pid);
+                }
+            }
+        }
+    }
+
+    Ok(result)
 }

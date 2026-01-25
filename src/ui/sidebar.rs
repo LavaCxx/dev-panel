@@ -71,16 +71,6 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                     ("", Style::default())
                 };
 
-                // 运行时间（如果有）
-                let uptime = if is_running && !is_suspended {
-                    project
-                        .dev_uptime()
-                        .map(|t| format!(" {}", t))
-                        .unwrap_or_default()
-                } else {
-                    String::new()
-                };
-
                 // 主样式
                 let style = if is_selected {
                     Style::default()
@@ -108,23 +98,10 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                     Style::default().fg(theme.border)
                 };
 
-                // 运行时间样式
-                let uptime_style = if is_selected {
-                    Style::default()
-                        .fg(theme.border)
-                        .bg(theme.selection)
-                        .add_modifier(Modifier::DIM)
-                } else {
-                    Style::default()
-                        .fg(theme.border)
-                        .add_modifier(Modifier::DIM)
-                };
-
                 ListItem::new(Line::from(vec![
                     Span::styled(number_badge, badge_style),
                     Span::styled(prefix, selector_style),
                     Span::styled(project.display_name(), style),
-                    Span::styled(uptime, uptime_style),
                     Span::styled(format!(" {}", status_icon), status_style),
                 ]))
             })
