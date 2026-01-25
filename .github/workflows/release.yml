@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: devpanel-macos-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: devpanel-macos-aarch64
+          # Linux
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: devpanel-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: devpanel-linux-aarch64
+          # Windows
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: devpanel-windows-x86_64.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release/devpanel ${{ matrix.name }}
+          chmod +x ${{ matrix.name }}
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release/devpanel.exe ${{ matrix.name }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          for dir in artifacts/*/; do
+            cp "$dir"* release/
+          done
+          ls -la release/
+
+      - name: Create checksums
+        run: |
+          cd release
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: DevPanel ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## DevPanel ${{ steps.version.outputs.VERSION }}
+            
+            多项目终端管理 TUI 工具 / Multi-project terminal management TUI tool
+            
+            ### 下载 / Downloads
+            
+            | 平台 / Platform | 架构 / Architecture | 文件 / File |
+            |----------------|---------------------|-------------|
+            | macOS | x86_64 (Intel) | `devpanel-macos-x86_64` |
+            | macOS | aarch64 (Apple Silicon) | `devpanel-macos-aarch64` |
+            | Linux | x86_64 | `devpanel-linux-x86_64` |
+            | Linux | aarch64 (ARM64) | `devpanel-linux-aarch64` |
+            | Windows | x86_64 | `devpanel-windows-x86_64.exe` |
+            
+            ### 安装 / Installation
+            
+            ```bash
+            # macOS / Linux
+            chmod +x devpanel-*
+            ./devpanel-*
+            
+            # 或移动到 PATH
+            sudo mv devpanel-* /usr/local/bin/devpanel
+            ```
+            
+            ### 校验 / Verification
+            
+            ```bash
+            sha256sum -c checksums.txt
+            ```
+          files: |
+            release/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

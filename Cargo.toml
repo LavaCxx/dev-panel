@@ -1,0 +1,51 @@
+[package]
+name = "devpanel"
+version = "0.1.0"
+edition = "2021"
+description = "多项目终端管理 TUI 工具 - Multi-project terminal management TUI tool"
+authors = ["lavac"]
+license = "MIT"
+repository = "https://github.com/lavac/devpanel"
+readme = "README.md"
+keywords = ["tui", "terminal", "dev", "frontend", "management"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+# UI 框架
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+
+# PTY 支持
+portable-pty = "0.8"
+tui-term = "0.2"
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 错误处理
+anyhow = "1"
+
+# 跨平台工具
+dirs = "5"
+which = "7"
+
+# 日志（可选，用于调试）
+log = "0.4"
+env_logger = "0.11"
+
+# UUID 生成（用于命令 ID）
+uuid = { version = "1", features = ["v4"] }
+
+# 终端解析器
+vt100 = "0.15"
+
+# 异步事件流
+futures = "0.3"
+
+# Unix 信号处理（用于进程暂停/恢复）
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

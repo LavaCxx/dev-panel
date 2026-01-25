@@ -1,0 +1,32 @@
+# Rust 编译产物
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cursor/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# 配置文件（包含用户个人项目路径）
+devpanel.json
+project-dock.json
+
+# 日志
+*.log
+
+# 调试文件
+*.pdb
