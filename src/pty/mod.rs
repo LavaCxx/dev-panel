@@ -127,22 +127,123 @@ impl PtyHandle {
         }
     }
 
-    /// Windows 上暂停进程（目前不支持）
+    /// Windows 上暂停进程
+    /// 通过遍历所有线程并暂停它们来实现
     #[cfg(windows)]
     pub fn suspend(&mut self) -> anyhow::Result<bool> {
-        // Windows 上暂停进程需要使用 NtSuspendProcess，较为复杂
-        // 暂不实现
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+        };
+        use windows::Win32::System::Threading::{OpenThread, SuspendThread, THREAD_SUSPEND_RESUME};
+
+        if let Some(pid) = self.pid {
+            if !self.suspended {
+                unsafe {
+                    // 创建线程快照
+                    let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)?;
+
+                    let mut entry = THREADENTRY32 {
+                        dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
+                        ..Default::default()
+                    };
+
+                    let mut suspended_count = 0;
+
+                    if Thread32First(snapshot, &mut entry).is_ok() {
+                        loop {
+                            // 只处理属于目标进程的线程
+                            if entry.th32OwnerProcessID == pid {
+                                if let Ok(thread_handle) =
+                                    OpenThread(THREAD_SUSPEND_RESUME, false, entry.th32ThreadID)
+                                {
+                                    if SuspendThread(thread_handle) != u32::MAX {
+                                        suspended_count += 1;
+                                    }
+                                    let _ = CloseHandle(thread_handle);
+                                }
+                            }
+
+                            if Thread32Next(snapshot, &mut entry).is_err() {
+                                break;
+                            }
+                        }
+                    }
+
+                    let _ = CloseHandle(snapshot);
+
+                    if suspended_count > 0 {
+                        self.suspended = true;
+                        return Ok(true);
+                    }
+                }
+            }
+        }
         Ok(false)
     }
 
+    /// Windows 上恢复进程
     #[cfg(windows)]
     pub fn resume(&mut self) -> anyhow::Result<bool> {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+        };
+        use windows::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+
+        if let Some(pid) = self.pid {
+            if self.suspended {
+                unsafe {
+                    // 创建线程快照
+                    let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)?;
+
+                    let mut entry = THREADENTRY32 {
+                        dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
+                        ..Default::default()
+                    };
+
+                    let mut resumed_count = 0;
+
+                    if Thread32First(snapshot, &mut entry).is_ok() {
+                        loop {
+                            // 只处理属于目标进程的线程
+                            if entry.th32OwnerProcessID == pid {
+                                if let Ok(thread_handle) =
+                                    OpenThread(THREAD_SUSPEND_RESUME, false, entry.th32ThreadID)
+                                {
+                                    if ResumeThread(thread_handle) != u32::MAX {
+                                        resumed_count += 1;
+                                    }
+                                    let _ = CloseHandle(thread_handle);
+                                }
+                            }
+
+                            if Thread32Next(snapshot, &mut entry).is_err() {
+                                break;
+                            }
+                        }
+                    }
+
+                    let _ = CloseHandle(snapshot);
+
+                    if resumed_count > 0 {
+                        self.suspended = false;
+                        return Ok(true);
+                    }
+                }
+            }
+        }
         Ok(false)
     }
 
+    /// Windows 上切换暂停/恢复状态
     #[cfg(windows)]
     pub fn toggle_suspend(&mut self) -> anyhow::Result<bool> {
-        Ok(false)
+        if self.suspended {
+            self.resume()
+        } else {
+            self.suspend()
+        }
     }
 }
 
