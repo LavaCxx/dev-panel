@@ -30,7 +30,9 @@ pub fn handle_pty_events(state: &mut AppState) {
                     if let Some(ref dev_pty) = project.dev_pty {
                         if dev_pty.id == pty_id {
                             project.dev_pty = None;
-                            status_msg = Some(format!("Dev server stopped (exit: {:?})", exit_code));
+                            project.mark_dev_stopped();
+                            status_msg =
+                                Some(format!("Dev server stopped (exit: {:?})", exit_code));
                         }
                     }
                     if let Some(ref shell_pty) = project.shell_pty {

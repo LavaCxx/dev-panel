@@ -7,6 +7,8 @@ use crate::config::AppConfig;
 use crate::i18n::{I18n, Language};
 use crate::project::Project;
 use crate::pty::PtyEvent;
+use crate::ui::Spinner;
+use std::time::Instant;
 use tokio::sync::mpsc;
 
 /// 焦点区域枚举
@@ -39,6 +41,14 @@ impl FocusArea {
     }
 }
 
+/// 命令执行目标
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum CommandTarget {
+    #[default]
+    DevTerminal, // 在 Dev Server 面板执行
+    ShellTerminal, // 在 Interactive Shell 执行
+}
+
 /// 应用模式枚举
 /// 用于处理不同的交互模式（普通模式、弹窗模式等）
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -47,11 +57,238 @@ pub enum AppMode {
     Normal,
     CommandPalette,
     AddCommand,
-    AddProject,
+    AddProject,      // 旧的手动输入模式（保留）
+    BrowseDirectory, // 新的目录浏览器模式
     EditAlias,
     Help,
     Settings,
     Confirm(String), // 确认对话框，参数为确认消息
+}
+
+/// 状态消息（带时间戳，用于自动淡出）
+pub struct StatusMessage {
+    pub text: String,
+    pub created_at: Instant,
+}
+
+impl StatusMessage {
+    pub fn new(text: String) -> Self {
+        Self {
+            text,
+            created_at: Instant::now(),
+        }
+    }
+
+    /// 获取消息年龄（秒）
+    pub fn age_secs(&self) -> f64 {
+        self.created_at.elapsed().as_secs_f64()
+    }
+
+    /// 消息是否应该淡出（超过 3 秒）
+    pub fn should_fade(&self) -> bool {
+        self.age_secs() > 3.0
+    }
+
+    /// 消息是否过期（超过 5 秒）
+    pub fn is_expired(&self) -> bool {
+        self.age_secs() > 5.0
+    }
+
+    /// 获取淡出透明度 (1.0 = 完全可见, 0.0 = 完全透明)
+    pub fn opacity(&self) -> f64 {
+        let age = self.age_secs();
+        if age < 3.0 {
+            1.0
+        } else if age < 5.0 {
+            1.0 - (age - 3.0) / 2.0
+        } else {
+            0.0
+        }
+    }
+}
+
+/// 目录浏览器状态
+#[derive(Debug, Clone)]
+pub struct DirectoryBrowser {
+    /// 当前浏览的目录
+    pub current_dir: std::path::PathBuf,
+    /// 目录中的条目列表（只包含文件夹）
+    pub entries: Vec<DirEntry>,
+    /// 当前选中的索引
+    pub selected_idx: usize,
+    /// 是否显示隐藏文件
+    pub show_hidden: bool,
+    /// 是否在驱动器选择模式（仅 Windows）
+    pub in_drive_selection: bool,
+}
+
+/// 目录条目
+#[derive(Debug, Clone)]
+pub struct DirEntry {
+    pub name: String,
+    pub path: std::path::PathBuf,
+    pub is_dir: bool,
+    pub has_package_json: bool,
+}
+
+impl DirectoryBrowser {
+    /// 创建新的目录浏览器，从用户主目录开始
+    pub fn new() -> Self {
+        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
+        let mut browser = Self {
+            current_dir: home,
+            entries: Vec::new(),
+            selected_idx: 0,
+            show_hidden: false,
+            in_drive_selection: false,
+        };
+        browser.refresh();
+        browser
+    }
+
+    /// 刷新当前目录的内容
+    pub fn refresh(&mut self) {
+        self.entries.clear();
+        self.selected_idx = 0;
+
+        // Windows 驱动器选择模式
+        if self.in_drive_selection {
+            #[cfg(windows)]
+            {
+                self.entries = Self::get_windows_drives();
+            }
+            return;
+        }
+
+        if let Ok(read_dir) = std::fs::read_dir(&self.current_dir) {
+            let mut entries: Vec<DirEntry> = read_dir
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    // 过滤隐藏文件（除非 show_hidden）
+                    if !self.show_hidden && name.starts_with('.') {
+                        return false;
+                    }
+                    // 只显示目录
+                    e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                })
+                .map(|e| {
+                    let path = e.path();
+                    let has_package_json = path.join("package.json").exists();
+                    DirEntry {
+                        name: e.file_name().to_string_lossy().to_string(),
+                        path,
+                        is_dir: true,
+                        has_package_json,
+                    }
+                })
+                .collect();
+
+            // 按名称排序
+            entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            self.entries = entries;
+        }
+    }
+
+    /// 获取 Windows 驱动器列表
+    #[cfg(windows)]
+    fn get_windows_drives() -> Vec<DirEntry> {
+        let mut drives = Vec::new();
+        // 检查 A-Z 驱动器
+        for letter in b'A'..=b'Z' {
+            let drive_path = format!("{}:\\", letter as char);
+            let path = std::path::PathBuf::from(&drive_path);
+            if path.exists() {
+                drives.push(DirEntry {
+                    name: format!("{}: Drive", letter as char),
+                    path,
+                    is_dir: true,
+                    has_package_json: false,
+                });
+            }
+        }
+        drives
+    }
+
+    /// 检查当前是否在驱动器根目录（Windows）
+    #[cfg(windows)]
+    fn is_at_drive_root(&self) -> bool {
+        // Windows 驱动器根目录形如 "C:\" 或 "C:"
+        let path_str = self.current_dir.to_string_lossy();
+        path_str.len() <= 3 && path_str.chars().nth(1) == Some(':')
+    }
+
+    #[cfg(not(windows))]
+    fn is_at_drive_root(&self) -> bool {
+        false
+    }
+
+    /// 进入选中的目录
+    pub fn enter_selected(&mut self) {
+        if let Some(entry) = self.entries.get(self.selected_idx) {
+            if entry.is_dir {
+                self.current_dir = entry.path.clone();
+                self.in_drive_selection = false;
+                self.refresh();
+            }
+        }
+    }
+
+    /// 返回上级目录
+    pub fn go_up(&mut self) {
+        // 如果在驱动器选择模式，按返回无效
+        if self.in_drive_selection {
+            return;
+        }
+
+        // Windows: 如果已经在驱动器根目录，进入驱动器选择模式
+        #[cfg(windows)]
+        if self.is_at_drive_root() {
+            self.in_drive_selection = true;
+            self.refresh();
+            return;
+        }
+
+        if let Some(parent) = self.current_dir.parent() {
+            self.current_dir = parent.to_path_buf();
+            self.refresh();
+        }
+    }
+
+    /// 选择下一项
+    pub fn select_next(&mut self) {
+        if !self.entries.is_empty() {
+            self.selected_idx = (self.selected_idx + 1) % self.entries.len();
+        }
+    }
+
+    /// 选择上一项
+    pub fn select_prev(&mut self) {
+        if !self.entries.is_empty() {
+            if self.selected_idx == 0 {
+                self.selected_idx = self.entries.len() - 1;
+            } else {
+                self.selected_idx -= 1;
+            }
+        }
+    }
+
+    /// 切换隐藏文件显示
+    pub fn toggle_hidden(&mut self) {
+        self.show_hidden = !self.show_hidden;
+        self.refresh();
+    }
+
+    /// 获取当前选中的条目
+    pub fn selected_entry(&self) -> Option<&DirEntry> {
+        self.entries.get(self.selected_idx)
+    }
+}
+
+impl Default for DirectoryBrowser {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// 全局应用状态
@@ -74,12 +311,26 @@ pub struct AppState {
     pub pty_tx: mpsc::UnboundedSender<PtyEvent>,
     /// 命令面板选中索引
     pub command_palette_idx: usize,
+    /// 命令执行目标（Dev Terminal 或 Shell Terminal）
+    pub command_target: CommandTarget,
     /// 设置页面选中索引
     pub settings_idx: usize,
     /// 输入缓冲区（用于各种输入场景）
     pub input_buffer: String,
-    /// 状态栏消息
-    pub status_message: Option<String>,
+    /// 状态栏消息（带时间戳）
+    pub status_message: Option<StatusMessage>,
+    /// 全局 Spinner（用于加载动画）
+    pub spinner: Spinner,
+    /// 应用启动时间
+    pub start_time: Instant,
+    /// 当前帧计数（用于动画）
+    pub frame_count: u64,
+    /// 目录浏览器状态
+    pub dir_browser: DirectoryBrowser,
+    /// 系统信息（用于获取进程 CPU/内存使用）
+    pub system: sysinfo::System,
+    /// 上次更新资源信息的帧计数
+    resource_update_frame: u64,
 }
 
 impl AppState {
@@ -97,10 +348,82 @@ impl AppState {
             pty_rx,
             pty_tx,
             command_palette_idx: 0,
+            command_target: CommandTarget::default(),
             settings_idx: 0,
             input_buffer: String::new(),
             status_message: None,
+            spinner: Spinner::dots(),
+            start_time: Instant::now(),
+            frame_count: 0,
+            dir_browser: DirectoryBrowser::new(),
+            system: {
+                // 初始化 sysinfo 并进行第一次刷新
+                // 这样后续的 CPU 使用率计算才能正常工作
+                let mut sys = sysinfo::System::new();
+                sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                sys
+            },
+            resource_update_frame: 0,
         }
+    }
+
+    /// 进入目录浏览模式
+    pub fn enter_browse_mode(&mut self) {
+        self.dir_browser = DirectoryBrowser::new();
+        self.mode = AppMode::BrowseDirectory;
+    }
+
+    /// 增加帧计数（每帧调用）
+    pub fn tick(&mut self) {
+        self.frame_count = self.frame_count.wrapping_add(1);
+
+        // 自动清除过期的状态消息
+        if let Some(ref msg) = self.status_message {
+            if msg.is_expired() {
+                self.status_message = None;
+            }
+        }
+
+        // 每 30 帧（约每秒）更新一次进程资源信息
+        // 这样可以避免频繁刷新系统信息带来的性能开销
+        if self.frame_count - self.resource_update_frame >= 30 {
+            self.update_resource_usage();
+            self.resource_update_frame = self.frame_count;
+        }
+    }
+
+    /// 更新所有运行中进程的资源使用信息
+    fn update_resource_usage(&mut self) {
+        use sysinfo::ProcessesToUpdate;
+
+        // 收集所有需要刷新的进程 PID
+        let pids: Vec<sysinfo::Pid> = self
+            .projects
+            .iter()
+            .filter_map(|p| p.dev_pty.as_ref())
+            .filter_map(|pty| pty.pid)
+            .map(sysinfo::Pid::from_u32)
+            .collect();
+
+        if pids.is_empty() {
+            return;
+        }
+
+        // 刷新指定进程的信息（包括子进程）
+        // 使用 All 来确保能获取到子进程信息
+        self.system.refresh_processes(ProcessesToUpdate::All, true);
+
+        // 更新每个项目的资源使用信息
+        for project in &mut self.projects {
+            if let Some(ref mut pty) = project.dev_pty {
+                pty.update_resource_usage(&self.system);
+            }
+        }
+    }
+
+    /// 获取 spinner 当前帧
+    pub fn spinner_frame(&self) -> &'static str {
+        self.spinner.frame()
     }
 
     /// 获取当前语言
@@ -116,6 +439,12 @@ impl AppState {
     /// 切换语言
     pub fn toggle_language(&mut self) {
         self.config.settings.language = self.config.settings.language.toggle();
+    }
+
+    /// 切换 Windows Shell（仅 Windows 有效）
+    #[cfg(windows)]
+    pub fn toggle_windows_shell(&mut self) {
+        self.config.settings.windows_shell = self.config.settings.windows_shell.toggle();
     }
 
     /// 获取当前激活的项目（如果有）
@@ -174,7 +503,7 @@ impl AppState {
 
     /// 设置状态消息
     pub fn set_status(&mut self, message: &str) {
-        self.status_message = Some(message.to_string());
+        self.status_message = Some(StatusMessage::new(message.to_string()));
     }
 
     /// 清除状态消息
@@ -182,10 +511,24 @@ impl AppState {
         self.status_message = None;
     }
 
+    /// 获取状态消息文本（如果有）
+    pub fn status_text(&self) -> Option<&str> {
+        self.status_message.as_ref().map(|m| m.text.as_str())
+    }
+
+    /// 获取状态消息透明度
+    pub fn status_opacity(&self) -> f64 {
+        self.status_message
+            .as_ref()
+            .map(|m| m.opacity())
+            .unwrap_or(0.0)
+    }
+
     /// 进入命令面板模式
-    pub fn enter_command_palette(&mut self) {
+    pub fn enter_command_palette(&mut self, target: CommandTarget) {
         self.mode = AppMode::CommandPalette;
         self.command_palette_idx = 0;
+        self.command_target = target;
     }
 
     /// 退出当前模式，返回普通模式

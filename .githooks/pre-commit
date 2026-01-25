@@ -1,0 +1,24 @@
+#!/bin/sh
+# Pre-commit hook: 自动运行 cargo fmt
+
+# 检查是否有 Rust 文件被修改
+RUST_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.rs$')
+
+if [ -n "$RUST_FILES" ]; then
+    echo "Running cargo fmt..."
+    
+    # 运行 cargo fmt
+    cargo fmt --all
+    
+    if [ $? -ne 0 ]; then
+        echo "cargo fmt failed!"
+        exit 1
+    fi
+    
+    # 将格式化后的文件重新添加到暂存区
+    echo "$RUST_FILES" | xargs git add
+    
+    echo "Code formatted successfully."
+fi
+
+exit 0

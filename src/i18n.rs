@@ -1,6 +1,8 @@
 //! 国际化模块
 //! 支持中英文切换
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// 语言枚举
@@ -43,7 +45,7 @@ impl I18n {
     pub fn app_title(&self) -> &'static str {
         match self.lang {
             Language::English => " DevPanel ",
-            Language::Chinese => " 开发面板 ",
+            Language::Chinese => " DevPanel ",
         }
     }
 
@@ -82,10 +84,33 @@ impl I18n {
         }
     }
 
+    pub fn select_directory(&self) -> &'static str {
+        match self.lang {
+            Language::English => " Select Directory ",
+            Language::Chinese => " 选择目录 ",
+        }
+    }
+
+    pub fn empty_directory(&self) -> &'static str {
+        match self.lang {
+            Language::English => "  (empty directory)",
+            Language::Chinese => "  (空目录)",
+        }
+    }
+
+    pub fn select_drive(&self) -> &'static str {
+        match self.lang {
+            Language::English => "Select Drive",
+            Language::Chinese => "选择驱动器",
+        }
+    }
+
     // === 状态栏提示 ===
     pub fn status_hint_sidebar(&self) -> &'static str {
         match self.lang {
-            Language::English => " Tab: Project | Enter: Shell | r: Run | s: Stop | ,: Settings | ?: Help",
+            Language::English => {
+                " Tab: Project | Enter: Shell | r: Run | s: Stop | ,: Settings | ?: Help"
+            }
             Language::Chinese => " Tab: 切换 | Enter: 终端 | r: 运行 | s: 停止 | ,: 设置 | ?: 帮助",
         }
     }
@@ -102,6 +127,13 @@ impl I18n {
         match self.lang {
             Language::English => "Language",
             Language::Chinese => "语言",
+        }
+    }
+
+    pub fn shell(&self) -> &'static str {
+        match self.lang {
+            Language::English => "Shell",
+            Language::Chinese => "终端",
         }
     }
 

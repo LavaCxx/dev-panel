@@ -6,16 +6,16 @@
 //! - Dev Server: 只显示命令输出，不需要焦点，r 运行命令，s 停止
 //! - Interactive Shell: 完全交互式，Enter 进入
 
-use crate::app::{AppMode, AppState, FocusArea};
+use crate::app::{AppMode, AppState, CommandTarget, FocusArea};
 use crate::project::Project;
 use crate::pty::PtyManager;
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use std::path::PathBuf;
 
-/// 侧边栏宽度常量
-const SIDEBAR_WIDTH: u16 = 28;
+/// 侧边栏宽度常量（增加以显示 CPU/内存信息）
+const SIDEBAR_WIDTH: u16 = 38;
 
 /// 处理 crossterm 事件
 pub fn handle_event(
@@ -76,7 +76,7 @@ fn handle_mouse_event(
         MouseEventKind::ScrollUp => {
             match state.focus {
                 FocusArea::Sidebar => {
-                    state.select_prev_project();
+                    // 侧边栏不使用滚轮切换项目（幅度过大）
                 }
                 FocusArea::DevTerminal => {
                     // Dev Terminal 向上滚动（查看更早的 log）
@@ -93,7 +93,7 @@ fn handle_mouse_event(
         MouseEventKind::ScrollDown => {
             match state.focus {
                 FocusArea::Sidebar => {
-                    state.select_next_project();
+                    // 侧边栏不使用滚轮切换项目（幅度过大）
                 }
                 FocusArea::DevTerminal => {
                     // Dev Terminal 向下滚动（查看更新的 log）
@@ -117,10 +117,17 @@ fn handle_key_event(
     key: KeyEvent,
     pty_manager: &PtyManager,
 ) -> anyhow::Result<bool> {
+    // Windows 会同时发送 Press 和 Release 事件，只处理 Press 事件
+    // 避免每次按键被处理两次
+    if key.kind != KeyEventKind::Press {
+        return Ok(false);
+    }
+
     match &state.mode.clone() {
         AppMode::Normal => handle_normal_mode(state, key, pty_manager),
         AppMode::CommandPalette => handle_command_palette_mode(state, key, pty_manager),
         AppMode::AddProject => handle_add_project_mode(state, key),
+        AppMode::BrowseDirectory => handle_browse_directory_mode(state, key),
         AppMode::AddCommand => handle_add_command_mode(state, key),
         AppMode::EditAlias => handle_edit_alias_mode(state, key),
         AppMode::Help => handle_help_mode(state, key),
@@ -252,16 +259,24 @@ fn handle_normal_mode(
         // r 打开命令面板（在 Dev Terminal 运行）
         KeyCode::Char('r') => {
             if state.active_project().is_some() {
-                state.enter_command_palette();
+                state.enter_command_palette(CommandTarget::DevTerminal);
             } else {
                 let msg = state.i18n().no_project().to_string();
                 state.set_status(&msg);
             }
         }
-        // a 添加项目
+        // R (Shift+r) 打开命令面板（在 Interactive Shell 运行）
+        KeyCode::Char('R') => {
+            if state.active_project().is_some() {
+                state.enter_command_palette(CommandTarget::ShellTerminal);
+            } else {
+                let msg = state.i18n().no_project().to_string();
+                state.set_status(&msg);
+            }
+        }
+        // a 添加项目（进入目录浏览器）
         KeyCode::Char('a') => {
-            state.mode = AppMode::AddProject;
-            state.input_buffer.clear();
+            state.enter_browse_mode();
         }
         // c 添加自定义命令
         KeyCode::Char('c') => {
@@ -278,6 +293,7 @@ fn handle_normal_mode(
             if let Some(project) = state.active_project_mut() {
                 if project.dev_pty.is_some() {
                     project.dev_pty = None;
+                    project.mark_dev_stopped();
                     let msg = state.i18n().dev_stopped().to_string();
                     state.set_status(&msg);
                 }
@@ -375,8 +391,15 @@ fn handle_command_palette_mode(
             state.command_palette_prev();
         }
         KeyCode::Enter => {
-            // 执行选中的命令（在 Dev Terminal）
-            execute_command_in_dev(state, pty_manager)?;
+            // 根据 command_target 决定执行位置
+            match state.command_target {
+                CommandTarget::DevTerminal => {
+                    execute_command_in_dev(state, pty_manager)?;
+                }
+                CommandTarget::ShellTerminal => {
+                    execute_command_in_shell(state, pty_manager)?;
+                }
+            }
             state.exit_mode();
         }
         _ => {}
@@ -412,6 +435,97 @@ fn handle_add_project_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Resul
         }
         KeyCode::Backspace => {
             state.input_buffer.pop();
+        }
+        _ => {}
+    }
+    Ok(true)
+}
+
+/// 处理目录浏览模式
+fn handle_browse_directory_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<bool> {
+    match key.code {
+        // Esc 取消
+        KeyCode::Esc => {
+            state.exit_mode();
+        }
+        // 上下导航
+        KeyCode::Char('j') | KeyCode::Down => {
+            state.dir_browser.select_next();
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            state.dir_browser.select_prev();
+        }
+        // Enter 进入目录
+        KeyCode::Enter => {
+            state.dir_browser.enter_selected();
+        }
+        // Backspace 返回上级目录
+        KeyCode::Backspace => {
+            state.dir_browser.go_up();
+        }
+        // 空格：选择目录作为项目
+        KeyCode::Char(' ') => {
+            // 优先检查选中的目录，否则检查当前目录
+            let path_to_add = if let Some(entry) = state.dir_browser.selected_entry() {
+                if entry.has_package_json {
+                    // 选中的目录有 package.json
+                    Some(entry.path.clone())
+                } else {
+                    // 选中的目录没有 package.json，检查当前目录
+                    let current = state.dir_browser.current_dir.clone();
+                    if current.join("package.json").exists() {
+                        Some(current)
+                    } else {
+                        None
+                    }
+                }
+            } else {
+                // 没有选中任何条目，检查当前目录
+                let current = state.dir_browser.current_dir.clone();
+                if current.join("package.json").exists() {
+                    Some(current)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(path) = path_to_add {
+                match Project::load(path) {
+                    Ok(project) => {
+                        let msg = match state.language() {
+                            crate::i18n::Language::English => {
+                                format!("Added project: {}", project.name)
+                            }
+                            crate::i18n::Language::Chinese => {
+                                format!("已添加项目: {}", project.name)
+                            }
+                        };
+                        state.add_project(project);
+                        state.set_status(&msg);
+                        state.exit_mode();
+                    }
+                    Err(e) => {
+                        state.set_status(&format!("Error: {}", e));
+                    }
+                }
+            } else {
+                let msg = match state.language() {
+                    crate::i18n::Language::English => "No package.json found",
+                    crate::i18n::Language::Chinese => "未找到 package.json",
+                };
+                state.set_status(msg);
+            }
+        }
+        // . 切换隐藏文件
+        KeyCode::Char('.') => {
+            state.dir_browser.toggle_hidden();
+        }
+        // ~ 跳转到主目录
+        KeyCode::Char('~') => {
+            if let Some(home) = dirs::home_dir() {
+                state.dir_browser.current_dir = home;
+                state.dir_browser.refresh();
+            }
         }
         _ => {}
     }
@@ -489,7 +603,7 @@ fn handle_help_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<bool>
 /// 处理设置模式
 fn handle_settings_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<bool> {
     use crate::ui::SettingItem;
-    
+
     match key.code {
         KeyCode::Esc | KeyCode::Char(',') => {
             state.exit_mode();
@@ -511,6 +625,10 @@ fn handle_settings_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<b
                 match item {
                     SettingItem::Language => {
                         state.toggle_language();
+                    }
+                    #[cfg(windows)]
+                    SettingItem::WindowsShell => {
+                        state.toggle_windows_shell();
                     }
                 }
             }
@@ -562,8 +680,21 @@ fn start_shell_for_active_project(
         if needs_shell {
             let pty_id = format!("shell-{}", uuid::Uuid::new_v4());
             let pty_tx = state.pty_tx.clone();
-            
-            match pty_manager.create_shell(&pty_id, &path, 24, 80, pty_tx) {
+
+            #[cfg(windows)]
+            let shell_config = state.config.settings.windows_shell;
+
+            let result = pty_manager.create_shell(
+                &pty_id,
+                &path,
+                24,
+                80,
+                pty_tx,
+                #[cfg(windows)]
+                shell_config,
+            );
+
+            match result {
                 Ok(handle) => {
                     if let Some(project) = state.active_project_mut() {
                         project.shell_pty = Some(handle);
@@ -583,10 +714,7 @@ fn start_shell_for_active_project(
 }
 
 /// 在 Dev Terminal 执行命令（覆盖现有进程）
-fn execute_command_in_dev(
-    state: &mut AppState,
-    pty_manager: &PtyManager,
-) -> anyhow::Result<()> {
+fn execute_command_in_dev(state: &mut AppState, pty_manager: &PtyManager) -> anyhow::Result<()> {
     use crate::project::{detect_package_manager, CommandType};
 
     let command_idx = state.command_palette_idx;
@@ -619,6 +747,9 @@ fn execute_command_in_dev(
         let pty_id = format!("dev-{}", uuid::Uuid::new_v4());
         let pty_tx = state.pty_tx.clone();
 
+        #[cfg(windows)]
+        let shell_config = state.config.settings.windows_shell;
+
         let handle = pty_manager.run_shell_command(
             &pty_id,
             &full_command,
@@ -626,12 +757,98 @@ fn execute_command_in_dev(
             24,
             80,
             pty_tx,
+            #[cfg(windows)]
+            shell_config,
         )?;
 
         if let Some(project) = state.active_project_mut() {
             project.dev_pty = Some(handle);
+            project.mark_dev_started();
         }
         state.set_status(&format!("Running: {}", cmd_name));
+    }
+    Ok(())
+}
+
+/// 在 Interactive Shell 执行命令
+fn execute_command_in_shell(state: &mut AppState, pty_manager: &PtyManager) -> anyhow::Result<()> {
+    use crate::project::{detect_package_manager, CommandType};
+
+    let command_idx = state.command_palette_idx;
+
+    // 获取命令信息
+    let command_info = {
+        if let Some(project) = state.active_project() {
+            let commands = project.get_all_commands();
+            commands.get(command_idx).map(|cmd| {
+                let working_dir = project.path.clone();
+                let full_command = match cmd.cmd_type {
+                    CommandType::NpmScript => {
+                        let pm = detect_package_manager(&working_dir);
+                        format!("{} {}", pm.run_prefix(), cmd.name)
+                    }
+                    CommandType::RawShell => cmd.command.clone(),
+                };
+                (working_dir, full_command, cmd.name.clone())
+            })
+        } else {
+            None
+        }
+    };
+
+    if let Some((project_path, full_command, cmd_name)) = command_info {
+        // 检查是否需要先启动 Shell
+        let needs_shell = {
+            if let Some(project) = state.active_project() {
+                project.shell_pty.is_none()
+            } else {
+                false
+            }
+        };
+
+        // 如果 Shell 不存在，先启动
+        if needs_shell {
+            let pty_id = format!("shell-{}", uuid::Uuid::new_v4());
+            let pty_tx = state.pty_tx.clone();
+
+            #[cfg(windows)]
+            let shell_config = state.config.settings.windows_shell;
+
+            let result = pty_manager.create_shell(
+                &pty_id,
+                &project_path,
+                24,
+                80,
+                pty_tx,
+                #[cfg(windows)]
+                shell_config,
+            );
+
+            match result {
+                Ok(handle) => {
+                    if let Some(project) = state.active_project_mut() {
+                        project.shell_pty = Some(handle);
+                    }
+                }
+                Err(e) => {
+                    state.set_status(&format!("Failed to start shell: {}", e));
+                    return Ok(());
+                }
+            }
+        }
+
+        // 向 Shell 发送命令（加上回车执行）
+        if let Some(project) = state.active_project_mut() {
+            if let Some(ref mut pty) = project.shell_pty {
+                // 发送命令文本 + 回车
+                let command_with_newline = format!("{}\r", full_command);
+                pty.send_input(command_with_newline.as_bytes())?;
+            }
+        }
+
+        // 切换焦点到 Shell Terminal
+        state.focus = FocusArea::ShellTerminal;
+        state.set_status(&format!("Shell: {}", cmd_name));
     }
     Ok(())
 }

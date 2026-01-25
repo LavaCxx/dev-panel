@@ -31,7 +31,7 @@ use ui::{draw_ui, Theme};
 async fn main() -> anyhow::Result<()> {
     // TUI 应用中禁用控制台日志（会干扰界面）
     // 如需调试，可以设置 RUST_LOG=off 或输出到文件
-    
+
     // 加载配置
     let config_path = get_config_path();
     let config = load_config(&config_path).unwrap_or_default();
@@ -86,6 +86,9 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         // 处理 PTY 事件
         handle_pty_events(&mut state);
 
+        // 更新动画帧和过期消息
+        state.tick();
+
         // 渲染 UI
         terminal.draw(|frame| {
             draw_ui(frame, &state, &theme);
@@ -96,31 +99,31 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
             break;
         }
 
-        // 等待事件（带超时，以便定期刷新 PTY 输出）
+        // 等待事件（带超时，以便定期刷新 PTY 输出和动画）
         tokio::select! {
             maybe_event = event_stream.next() => {
                 if let Some(Ok(evt)) = maybe_event {
                     event::handle_event(&mut state, evt, &pty_manager)?;
                 }
             }
-            // 每 50ms 刷新一次，确保 PTY 输出及时更新
+            // 每 50ms 刷新一次，确保 PTY 输出和动画及时更新
             _ = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {}
         }
     }
 
     // 保存配置
     let mut new_config = state.config.clone();
-    new_config.projects = state
-        .projects
-        .iter()
-        .map(|p| p.into())
-        .collect();
+    new_config.projects = state.projects.iter().map(|p| p.into()).collect();
     let config_path = get_config_path();
     let _ = save_config(&new_config, &config_path);
 
     // 恢复终端
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
 
     Ok(())

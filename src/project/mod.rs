@@ -12,6 +12,7 @@ pub use scanner::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::pty::PtyHandle;
 
@@ -76,6 +77,8 @@ pub struct Project {
     pub shell_pty: Option<PtyHandle>,
     /// Dev Terminal 滚动偏移量（用于查看历史 log）
     pub dev_scroll_offset: usize,
+    /// Dev Server 启动时间
+    pub dev_started_at: Option<Instant>,
 }
 
 impl Project {
@@ -96,7 +99,18 @@ impl Project {
             dev_pty: None,
             shell_pty: None,
             dev_scroll_offset: 0,
+            dev_started_at: None,
         }
+    }
+
+    /// 记录 Dev Server 启动时间
+    pub fn mark_dev_started(&mut self) {
+        self.dev_started_at = Some(Instant::now());
+    }
+
+    /// 清除 Dev Server 启动时间
+    pub fn mark_dev_stopped(&mut self) {
+        self.dev_started_at = None;
     }
 
     /// 获取显示名称（优先使用别名）
@@ -126,13 +140,22 @@ impl Project {
     }
 
     /// 获取所有可执行命令（npm scripts + 自定义命令）
+    /// npm scripts 按名称字母顺序排序，自定义命令按添加顺序排在后面
     pub fn get_all_commands(&self) -> Vec<CommandEntry> {
-        let mut commands: Vec<CommandEntry> = self
-            .scripts
-            .iter()
-            .map(|(name, cmd)| CommandEntry::new_npm_script(name, cmd))
+        // 收集并排序 npm scripts（按名称字母顺序）
+        let mut script_names: Vec<_> = self.scripts.keys().collect();
+        script_names.sort();
+
+        let mut commands: Vec<CommandEntry> = script_names
+            .into_iter()
+            .filter_map(|name| {
+                self.scripts
+                    .get(name)
+                    .map(|cmd| CommandEntry::new_npm_script(name, cmd))
+            })
             .collect();
 
+        // 自定义命令按添加顺序追加
         commands.extend(self.custom_commands.clone());
         commands
     }
