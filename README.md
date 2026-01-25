@@ -1,37 +1,39 @@
 # DevPanel
 
-[![CI](https://github.com/lavac/devpanel/actions/workflows/ci.yml/badge.svg)](https://github.com/lavac/devpanel/actions/workflows/ci.yml)
-[![Release](https://github.com/lavac/devpanel/actions/workflows/release.yml/badge.svg)](https://github.com/lavac/devpanel/actions/workflows/release.yml)
+[![CI](https://github.com/lavac/dev-panel/actions/workflows/ci.yml/badge.svg)](https://github.com/lavac/dev-panel/actions/workflows/ci.yml)
+[![Release](https://github.com/lavac/dev-panel/actions/workflows/release.yml/badge.svg)](https://github.com/lavac/dev-panel/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-多项目终端管理 TUI 工具 - 在单窗口内管理多个前端项目，支持切割视图（Dev Server 日志 + 交互式 Shell）。
+[中文文档](README_CN.md)
+
+A TUI tool for managing multiple frontend projects in a single terminal window, with split views for Dev Server logs and Interactive Shell.
 
 ![DevPanel Screenshot](docs/screenshot.png)
 
-## 特性
+## Features
 
-- **多项目管理**: 在一个终端窗口中管理多个前端项目
-- **分屏视图**: 上方显示 Dev Server 输出，下方显示交互式 Shell
-- **命令面板**: 快速执行 npm scripts 和自定义命令
-- **自动检测**: 自动解析 `package.json` 获取可用脚本
-- **包管理器智能检测**: 自动检测 npm/yarn/pnpm/bun
-- **进程冻结**: 暂停/恢复 Dev Server 进程，节省系统资源
-- **项目别名**: 为项目设置自定义显示名称
-- **配置持久化**: 项目列表和自定义命令自动保存
-- **跨平台**: 支持 macOS 和 Windows
-- **精美 UI**: Catppuccin Mocha 配色 + 圆角边框
-- **完整终端支持**: 支持 ANSI 颜色、Starship prompt 等美化
-- **鼠标支持**: 点击切换焦点和选择项目
-- **中英文切换**: 支持界面语言切换
+- **Multi-project Management**: Manage multiple frontend projects in one terminal window
+- **Split View**: Dev Server output on top, Interactive Shell on bottom
+- **Command Palette**: Quick access to npm scripts and custom commands
+- **Auto Detection**: Automatically parse `package.json` for available scripts
+- **Package Manager Detection**: Auto-detect npm/yarn/pnpm/bun
+- **Process Freeze**: Suspend/resume Dev Server to save system resources
+- **Project Aliases**: Set custom display names for projects
+- **Persistent Config**: Auto-save project list and custom commands
+- **Cross-platform**: Supports macOS, Linux, and Windows
+- **Beautiful UI**: Catppuccin Mocha theme with rounded borders
+- **Full Terminal Support**: ANSI colors, Starship prompt, and more
+- **Mouse Support**: Click to switch focus and select projects
+- **i18n**: English and Chinese interface
 
-## 安装
+## Installation
 
-### 从 Releases 下载（推荐）
+### Download from Releases (Recommended)
 
-从 [Releases](https://github.com/lavac/devpanel/releases) 页面下载对应平台的二进制文件：
+Download the binary for your platform from [Releases](https://github.com/lavac/dev-panel/releases):
 
-| 平台 | 架构 | 文件 |
-|------|------|------|
+| Platform | Architecture | File |
+|----------|--------------|------|
 | macOS | Intel | `devpanel-macos-x86_64` |
 | macOS | Apple Silicon | `devpanel-macos-aarch64` |
 | Linux | x86_64 | `devpanel-linux-x86_64` |
@@ -43,101 +45,101 @@
 chmod +x devpanel-*
 ./devpanel-*
 
-# 或安装到系统
+# Or install to system
 sudo mv devpanel-* /usr/local/bin/devpanel
 ```
 
-### 从源码构建
+### Build from Source
 
 ```bash
-# 克隆仓库
-git clone https://github.com/lavac/devpanel.git
+# Clone repository
+git clone https://github.com/lavac/dev-panel.git
 cd devpanel
 
-# 构建
+# Build
 cargo build --release
 
-# 运行
+# Run
 ./target/release/devpanel
 ```
 
-## 使用方法
+## Usage
 
-### 快捷键
+### Keyboard Shortcuts
 
-**项目导航（侧边栏）**
-| 按键 | 功能 |
-|------|------|
-| `1-9` | 快速切换到对应项目 |
-| `Tab` / `Shift+Tab` | 切换项目 |
-| `j` / `k` / `↑` / `↓` | 切换项目 |
-| `Enter` | 进入 Interactive Shell |
-| `r` | 打开命令面板 |
-| `a` | 添加新项目 |
-| `e` | 编辑项目别名 |
-| `c` | 添加自定义命令 |
-| `d` | 删除项目 |
-| `,` | 打开设置 |
-| `q` / `Ctrl+C` | 退出程序 |
-| `?` | 显示帮助 |
+**Project Navigation (Sidebar)**
+| Key | Action |
+|-----|--------|
+| `1-9` | Quick switch to project |
+| `Tab` / `Shift+Tab` | Switch projects |
+| `j` / `k` / `↑` / `↓` | Navigate projects |
+| `Enter` | Enter Interactive Shell |
+| `r` | Open command palette |
+| `a` | Add new project |
+| `e` | Edit project alias |
+| `c` | Add custom command |
+| `d` | Delete project |
+| `,` | Open settings |
+| `q` / `Ctrl+C` | Quit |
+| `?` | Show help |
 
-**Dev Terminal（只显示输出）**
-| 按键 | 功能 |
-|------|------|
-| `x` | 发送中断信号给进程 |
-| `p` | 暂停/恢复进程（冻结） |
-| `r` | 运行新命令（覆盖当前） |
-| `s` | 停止 Dev Server |
-| 鼠标点击 | 聚焦并可滚动查看 log |
-| `j/k/↑/↓` | 滚动查看历史 log |
-| `Esc` | 返回侧边栏 |
+**Dev Terminal (Output Only)**
+| Key | Action |
+|-----|--------|
+| `x` | Send interrupt signal |
+| `p` | Pause/Resume process (freeze) |
+| `r` | Run new command (replaces current) |
+| `s` | Stop Dev Server |
+| Mouse click | Focus and enable scroll |
+| `j/k/↑/↓` | Scroll through log history |
+| `Esc` | Return to sidebar |
 
-**Interactive Shell（完全交互）**
-| 按键 | 功能 |
-|------|------|
-| 所有按键 | 直接发送给 Shell |
-| `Esc` | 返回侧边栏（不关闭 Shell） |
+**Interactive Shell (Full Interactive)**
+| Key | Action |
+|-----|--------|
+| All keys | Sent directly to shell |
+| `Esc` | Return to sidebar (keeps shell running) |
 
-### 鼠标操作
+### Mouse Operations
 
-| 操作 | 功能 |
-|------|------|
-| 左键点击侧边栏 | 选择项目 |
-| 左键点击 Dev 区域 | 聚焦到 Dev Terminal（可滚动） |
-| 左键点击 Shell 区域 | 进入 Interactive Shell |
-| 滚轮滚动 | 根据焦点区域滚动内容 |
+| Action | Effect |
+|--------|--------|
+| Click sidebar | Select project |
+| Click Dev area | Focus Dev Terminal (scrollable) |
+| Click Shell area | Enter Interactive Shell |
+| Scroll wheel | Scroll content based on focus |
 
-### 添加项目
+### Adding a Project
 
-1. 按 `a` 键进入添加项目模式
-2. 输入项目的完整路径（需包含 `package.json`）
-3. 按 `Enter` 确认
+1. Press `a` to enter add project mode
+2. Enter the full path to the project (must contain `package.json`)
+3. Press `Enter` to confirm
 
-### 运行命令
+### Running Commands
 
-1. 选择一个项目
-2. 按 `r` 打开命令面板
-3. 使用 `j`/`k` 选择命令
-4. 按 `Enter` 执行
+1. Select a project
+2. Press `r` to open command palette
+3. Use `j`/`k` to select a command
+4. Press `Enter` to execute
 
-### 添加自定义命令
+### Adding Custom Commands
 
-1. 选择一个项目
-2. 按 `c` 进入添加命令模式
-3. 输入格式: `命令名称:实际命令`
-   - 例如: `docker:docker-compose up -d`
-4. 按 `Enter` 确认
+1. Select a project
+2. Press `c` to enter add command mode
+3. Enter format: `name:command`
+   - Example: `docker:docker-compose up -d`
+4. Press `Enter` to confirm
 
-### 暂停/恢复进程
+### Pause/Resume Process
 
-按 `p` 键可以暂停（冻结）正在运行的 Dev Server 进程，节省 CPU 和内存资源。
-- 暂停状态在侧边栏显示 `⏸` 图标
-- 再次按 `p` 恢复运行
-- 仅支持 macOS/Linux
+Press `p` to pause (freeze) a running Dev Server process, saving CPU and memory.
+- Paused status shows `⏸` icon in sidebar
+- Press `p` again to resume
+- Only supported on macOS/Linux
 
-## 配置文件
+## Configuration
 
-配置文件 `devpanel.json` 保存在当前工作目录：
+Config file `devpanel.json` is saved in the current working directory:
 
 ```json
 {
@@ -158,50 +160,50 @@ cargo build --release
   "settings": {
     "theme": "catppuccin-mocha",
     "default_runner": "pnpm",
-    "language": "Chinese"
+    "language": "English"
   }
 }
 ```
 
-## 命令类型
+## Command Types
 
-- **NpmScript**: 通过包管理器执行的 npm scripts（如 `pnpm dev`）
-- **RawShell**: 直接在 Shell 中执行的原始命令（如 `docker-compose up`）
+- **NpmScript**: Executed via package manager (e.g., `pnpm dev`)
+- **RawShell**: Executed directly in shell (e.g., `docker-compose up`)
 
-## 架构
+## Architecture
 
 ```
 devpanel/
 ├── src/
-│   ├── main.rs           # 入口点，异步主循环
-│   ├── app.rs            # AppState 全局状态管理
-│   ├── event.rs          # 事件处理和快捷键
-│   ├── i18n.rs           # 国际化支持
-│   ├── ui/               # UI 组件
-│   │   ├── layout.rs     # 主布局
-│   │   ├── sidebar.rs    # 项目列表
-│   │   ├── terminal.rs   # 终端面板
+│   ├── main.rs           # Entry point, async main loop
+│   ├── app.rs            # AppState global state management
+│   ├── event.rs          # Event handling and shortcuts
+│   ├── i18n.rs           # Internationalization
+│   ├── ui/               # UI components
+│   │   ├── layout.rs     # Main layout
+│   │   ├── sidebar.rs    # Project list
+│   │   ├── terminal.rs   # Terminal panel
 │   │   ├── settings_popup.rs
 │   │   ├── command_palette.rs
-│   │   └── theme.rs      # Catppuccin 主题
-│   ├── pty/              # PTY 管理
-│   │   ├── manager.rs    # PTY 生命周期
-│   │   └── bridge.rs     # PTY-UI 桥接
-│   ├── project/          # 项目管理
-│   │   ├── package.rs    # package.json 解析
-│   │   └── scanner.rs    # 项目扫描
-│   ├── config/           # 配置持久化
-│   └── platform/         # 跨平台工具
+│   │   └── theme.rs      # Catppuccin theme
+│   ├── pty/              # PTY management
+│   │   ├── manager.rs    # PTY lifecycle
+│   │   └── bridge.rs     # PTY-UI bridge
+│   ├── project/          # Project management
+│   │   ├── package.rs    # package.json parsing
+│   │   └── scanner.rs    # Project scanning
+│   ├── config/           # Configuration persistence
+│   └── platform/         # Cross-platform utilities
 └── Cargo.toml
 ```
 
-## 技术栈
+## Tech Stack
 
 - **UI**: [Ratatui](https://ratatui.rs/) + [Crossterm](https://github.com/crossterm-rs/crossterm)
-- **异步**: [Tokio](https://tokio.rs/)
+- **Async**: [Tokio](https://tokio.rs/)
 - **PTY**: [portable-pty](https://github.com/wez/wezterm/tree/main/pty) + [tui-term](https://github.com/a-kenji/tui-term)
-- **终端解析**: [vt100](https://github.com/doy/vt100-rust)
+- **Terminal Parsing**: [vt100](https://github.com/doy/vt100-rust)
 
-## 许可证
+## License
 
 MIT

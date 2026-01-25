@@ -1,6 +1,8 @@
 //! 国际化模块
 //! 支持中英文切换
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// 语言枚举
@@ -43,7 +45,7 @@ impl I18n {
     pub fn app_title(&self) -> &'static str {
         match self.lang {
             Language::English => " DevPanel ",
-            Language::Chinese => " 开发面板 ",
+            Language::Chinese => " DevPanel ",
         }
     }
 
@@ -85,7 +87,9 @@ impl I18n {
     // === 状态栏提示 ===
     pub fn status_hint_sidebar(&self) -> &'static str {
         match self.lang {
-            Language::English => " Tab: Project | Enter: Shell | r: Run | s: Stop | ,: Settings | ?: Help",
+            Language::English => {
+                " Tab: Project | Enter: Shell | r: Run | s: Stop | ,: Settings | ?: Help"
+            }
             Language::Chinese => " Tab: 切换 | Enter: 终端 | r: 运行 | s: 停止 | ,: 设置 | ?: 帮助",
         }
     }

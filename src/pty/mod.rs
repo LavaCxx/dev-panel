@@ -73,12 +73,12 @@ impl PtyHandle {
                 unsafe {
                     let pgid = libc::getpgid(pid as i32);
                     let target_pid = if pgid > 0 { -pgid } else { -(pid as i32) };
-                    
+
                     if libc::kill(target_pid, libc::SIGSTOP) == 0 {
                         self.suspended = true;
                         return Ok(true);
                     }
-                    
+
                     // 如果进程组信号失败，尝试直接发送给进程
                     if libc::kill(pid as i32, libc::SIGSTOP) == 0 {
                         self.suspended = true;
@@ -100,12 +100,12 @@ impl PtyHandle {
                 unsafe {
                     let pgid = libc::getpgid(pid as i32);
                     let target_pid = if pgid > 0 { -pgid } else { -(pid as i32) };
-                    
+
                     if libc::kill(target_pid, libc::SIGCONT) == 0 {
                         self.suspended = false;
                         return Ok(true);
                     }
-                    
+
                     // 如果进程组信号失败，尝试直接发送给进程
                     if libc::kill(pid as i32, libc::SIGCONT) == 0 {
                         self.suspended = false;
@@ -151,18 +151,12 @@ impl PtyHandle {
 #[derive(Debug, Clone)]
 pub enum PtyEvent {
     /// 收到输出数据
-    Output {
-        pty_id: String,
-        data: Vec<u8>,
-    },
+    Output { pty_id: String, data: Vec<u8> },
     /// PTY 进程已退出
     Exited {
         pty_id: String,
         exit_code: Option<i32>,
     },
     /// 错误发生
-    Error {
-        pty_id: String,
-        message: String,
-    },
+    Error { pty_id: String, message: String },
 }

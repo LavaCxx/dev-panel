@@ -9,13 +9,7 @@ use ratatui::{
 };
 
 /// 绘制输入弹窗
-pub fn draw_input_popup(
-    frame: &mut Frame,
-    title: &str,
-    prompt: &str,
-    input: &str,
-    theme: &Theme,
-) {
+pub fn draw_input_popup(frame: &mut Frame, title: &str, prompt: &str, input: &str, theme: &Theme) {
     let area = centered_rect(60, 20, frame.area());
 
     // 清除背景
@@ -34,8 +28,7 @@ pub fn draw_input_popup(
     // 提示文字
     let prompt_text = format!("{}\n\n> {}█", prompt, input);
 
-    let paragraph = Paragraph::new(prompt_text)
-        .style(Style::default().fg(theme.fg));
+    let paragraph = Paragraph::new(prompt_text).style(Style::default().fg(theme.fg));
 
     frame.render_widget(paragraph, inner);
 }

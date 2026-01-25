@@ -103,9 +103,7 @@ fn create_setting_item<'a>(
     };
 
     let value_style = if is_selected {
-        Style::default()
-            .fg(theme.info)
-            .bg(theme.selection)
+        Style::default().fg(theme.info).bg(theme.selection)
     } else {
         Style::default().fg(theme.info)
     };

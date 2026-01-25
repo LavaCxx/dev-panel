@@ -5,7 +5,7 @@ edition = "2021"
 description = "多项目终端管理 TUI 工具 - Multi-project terminal management TUI tool"
 authors = ["lavac"]
 license = "MIT"
-repository = "https://github.com/lavac/devpanel"
+repository = "https://github.com/lavac/dev-panel"
 readme = "README.md"
 keywords = ["tui", "terminal", "dev", "frontend", "management"]
 categories = ["command-line-utilities", "development-tools"]
@@ -49,3 +49,6 @@ futures = "0.3"
 # Unix 信号处理（用于进程暂停/恢复）
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

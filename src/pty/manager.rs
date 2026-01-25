@@ -32,18 +32,19 @@ impl PtyManager {
         event_tx: mpsc::UnboundedSender<PtyEvent>,
     ) -> anyhow::Result<PtyHandle> {
         let shell = get_default_shell();
-        
+
         // 使用 -l (login shell) 和 -i (interactive) 参数
         // 确保加载完整的 shell 配置（.zshrc, starship 等）
         #[cfg(unix)]
         let args = vec!["-l", "-i"];
         #[cfg(windows)]
         let args = vec![];
-        
+
         self.create_pty(id, &shell, &args, working_dir, rows, cols, event_tx)
     }
 
     /// 创建执行指定命令的 PTY
+    #[allow(clippy::too_many_arguments)]
     pub fn create_command(
         &self,
         id: &str,
@@ -82,6 +83,7 @@ impl PtyManager {
     }
 
     /// 内部方法：创建 PTY
+    #[allow(clippy::too_many_arguments)]
     fn create_pty(
         &self,
         id: &str,
@@ -93,7 +95,7 @@ impl PtyManager {
         event_tx: tokio::sync::mpsc::UnboundedSender<PtyEvent>,
     ) -> anyhow::Result<PtyHandle> {
         let pty_system = native_pty_system();
-        
+
         // 创建 PTY 对
         let pair = pty_system.openpty(PtySize {
             rows,
@@ -106,13 +108,21 @@ impl PtyManager {
         let mut cmd = CommandBuilder::new(program);
         cmd.args(args);
         cmd.cwd(working_dir);
-        
+
         // 设置关键环境变量以支持彩色输出和 prompt 美化
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        
+
         // 继承重要的环境变量
-        for key in &["HOME", "USER", "SHELL", "PATH", "LANG", "LC_ALL", "STARSHIP_SHELL"] {
+        for key in &[
+            "HOME",
+            "USER",
+            "SHELL",
+            "PATH",
+            "LANG",
+            "LC_ALL",
+            "STARSHIP_SHELL",
+        ] {
             if let Ok(val) = std::env::var(key) {
                 cmd.env(key, val);
             }
@@ -120,7 +130,7 @@ impl PtyManager {
 
         // 启动子进程
         let child = pair.slave.spawn_command(cmd)?;
-        
+
         // 获取子进程 PID（用于后续发送信号）
         let pid = child.process_id();
 

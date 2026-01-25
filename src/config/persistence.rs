@@ -36,7 +36,6 @@ pub fn get_config_path() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use tempfile::tempdir;
 
     #[test]
