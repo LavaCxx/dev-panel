@@ -10,7 +10,7 @@ use crate::app::{AppMode, AppState, CommandTarget, FocusArea};
 use crate::project::Project;
 use crate::pty::PtyManager;
 use crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use std::path::PathBuf;
 
@@ -117,6 +117,12 @@ fn handle_key_event(
     key: KeyEvent,
     pty_manager: &PtyManager,
 ) -> anyhow::Result<bool> {
+    // Windows 会同时发送 Press 和 Release 事件，只处理 Press 事件
+    // 避免每次按键被处理两次
+    if key.kind != KeyEventKind::Press {
+        return Ok(false);
+    }
+
     match &state.mode.clone() {
         AppMode::Normal => handle_normal_mode(state, key, pty_manager),
         AppMode::CommandPalette => handle_command_palette_mode(state, key, pty_manager),
