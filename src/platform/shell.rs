@@ -35,7 +35,9 @@ pub fn get_shell_with_config(_shell_type: ()) -> String {
 #[cfg(windows)]
 fn get_windows_shell(shell_type: WindowsShell) -> String {
     match shell_type {
-        WindowsShell::PowerShell => get_powershell_path().unwrap_or_else(|| "powershell.exe".to_string()),
+        WindowsShell::PowerShell => {
+            get_powershell_path().unwrap_or_else(|| "powershell.exe".to_string())
+        }
         WindowsShell::Cmd => get_cmd_path(),
     }
 }

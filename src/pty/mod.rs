@@ -109,14 +109,14 @@ impl PtyHandle {
     pub fn update_resource_usage(&mut self, system: &sysinfo::System) {
         if let Some(pid) = self.pid {
             let pid = sysinfo::Pid::from_u32(pid);
-            
+
             // 收集整个进程树的资源使用
             let mut total_cpu: f32 = 0.0;
             let mut total_memory: u64 = 0;
-            
+
             // 获取所有子进程的 PID
             let child_pids = collect_process_tree(system, pid);
-            
+
             // 如果找到了进程，统计资源使用
             if !child_pids.is_empty() {
                 for child_pid in child_pids {
@@ -133,7 +133,7 @@ impl PtyHandle {
                     total_memory = process.memory();
                 }
             }
-            
+
             self.resource_usage.cpu_percent = total_cpu;
             self.resource_usage.memory_bytes = total_memory;
         }
@@ -368,7 +368,7 @@ fn collect_process_tree(system: &sysinfo::System, root_pid: sysinfo::Pid) -> Vec
 
     // 首先检查根进程是否存在
     let root_exists = system.process(root_pid).is_some();
-    
+
     if root_exists {
         queue.push_back(root_pid);
         visited.insert(root_pid);
