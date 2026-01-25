@@ -118,6 +118,8 @@ pub struct DirectoryBrowser {
     pub selected_idx: usize,
     /// 是否显示隐藏文件
     pub show_hidden: bool,
+    /// 是否在驱动器选择模式（仅 Windows）
+    pub in_drive_selection: bool,
 }
 
 /// 目录条目
@@ -138,6 +140,7 @@ impl DirectoryBrowser {
             entries: Vec::new(),
             selected_idx: 0,
             show_hidden: false,
+            in_drive_selection: false,
         };
         browser.refresh();
         browser
@@ -147,6 +150,15 @@ impl DirectoryBrowser {
     pub fn refresh(&mut self) {
         self.entries.clear();
         self.selected_idx = 0;
+
+        // Windows 驱动器选择模式
+        if self.in_drive_selection {
+            #[cfg(windows)]
+            {
+                self.entries = Self::get_windows_drives();
+            }
+            return;
+        }
 
         if let Ok(read_dir) = std::fs::read_dir(&self.current_dir) {
             let mut entries: Vec<DirEntry> = read_dir
@@ -178,11 +190,45 @@ impl DirectoryBrowser {
         }
     }
 
+    /// 获取 Windows 驱动器列表
+    #[cfg(windows)]
+    fn get_windows_drives() -> Vec<DirEntry> {
+        let mut drives = Vec::new();
+        // 检查 A-Z 驱动器
+        for letter in b'A'..=b'Z' {
+            let drive_path = format!("{}:\\", letter as char);
+            let path = std::path::PathBuf::from(&drive_path);
+            if path.exists() {
+                drives.push(DirEntry {
+                    name: format!("{}: Drive", letter as char),
+                    path,
+                    is_dir: true,
+                    has_package_json: false,
+                });
+            }
+        }
+        drives
+    }
+
+    /// 检查当前是否在驱动器根目录（Windows）
+    #[cfg(windows)]
+    fn is_at_drive_root(&self) -> bool {
+        // Windows 驱动器根目录形如 "C:\" 或 "C:"
+        let path_str = self.current_dir.to_string_lossy();
+        path_str.len() <= 3 && path_str.chars().nth(1) == Some(':')
+    }
+
+    #[cfg(not(windows))]
+    fn is_at_drive_root(&self) -> bool {
+        false
+    }
+
     /// 进入选中的目录
     pub fn enter_selected(&mut self) {
         if let Some(entry) = self.entries.get(self.selected_idx) {
             if entry.is_dir {
                 self.current_dir = entry.path.clone();
+                self.in_drive_selection = false;
                 self.refresh();
             }
         }
@@ -190,6 +236,19 @@ impl DirectoryBrowser {
 
     /// 返回上级目录
     pub fn go_up(&mut self) {
+        // 如果在驱动器选择模式，按返回无效
+        if self.in_drive_selection {
+            return;
+        }
+
+        // Windows: 如果已经在驱动器根目录，进入驱动器选择模式
+        #[cfg(windows)]
+        if self.is_at_drive_root() {
+            self.in_drive_selection = true;
+            self.refresh();
+            return;
+        }
+
         if let Some(parent) = self.current_dir.parent() {
             self.current_dir = parent.to_path_buf();
             self.refresh();

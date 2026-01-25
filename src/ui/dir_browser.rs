@@ -40,7 +40,11 @@ pub fn draw_dir_browser(frame: &mut Frame, state: &AppState, theme: &Theme) {
         .split(inner);
 
     // 绘制当前路径
-    let path_text = format!(" {} {}", "📂", state.dir_browser.current_dir.display());
+    let path_text = if state.dir_browser.in_drive_selection {
+        format!(" {} {}", "💾", i18n.select_drive())
+    } else {
+        format!(" {} {}", "📂", state.dir_browser.current_dir.display())
+    };
     let path = Paragraph::new(path_text).style(
         Style::default()
             .fg(theme.title)
@@ -63,8 +67,10 @@ pub fn draw_dir_browser(frame: &mut Frame, state: &AppState, theme: &Theme) {
             .map(|(idx, entry)| {
                 let is_selected = idx == state.dir_browser.selected_idx;
 
-                // 图标：有 package.json 的显示特殊标记
-                let icon = if entry.has_package_json {
+                // 图标：驱动器选择模式用磁盘图标，有 package.json 用包图标，否则用文件夹图标
+                let icon = if state.dir_browser.in_drive_selection {
+                    "💿"
+                } else if entry.has_package_json {
                     "📦"
                 } else {
                     "📁"

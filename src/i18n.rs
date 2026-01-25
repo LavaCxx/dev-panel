@@ -98,6 +98,13 @@ impl I18n {
         }
     }
 
+    pub fn select_drive(&self) -> &'static str {
+        match self.lang {
+            Language::English => "Select Drive",
+            Language::Chinese => "选择驱动器",
+        }
+    }
+
     // === 状态栏提示 ===
     pub fn status_hint_sidebar(&self) -> &'static str {
         match self.lang {
