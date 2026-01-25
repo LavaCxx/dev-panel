@@ -20,20 +20,25 @@ jobs:
           - target: x86_64-apple-darwin
             os: macos-latest
             name: devpanel-macos-x86_64
+            cross: false
           - target: aarch64-apple-darwin
             os: macos-latest
             name: devpanel-macos-aarch64
+            cross: false
           # Linux
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             name: devpanel-linux-x86_64
+            cross: false
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             name: devpanel-linux-aarch64
+            cross: true
           # Windows
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             name: devpanel-windows-x86_64.exe
+            cross: false
 
     steps:
       - name: Checkout
@@ -44,14 +49,17 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Build
+      - name: Build (native)
+        if: ${{ !matrix.cross }}
         run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }}
 
       - name: Prepare artifact (Unix)
         if: runner.os != 'Windows'
