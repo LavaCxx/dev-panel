@@ -31,7 +31,7 @@ use ui::{draw_ui, Theme};
 async fn main() -> anyhow::Result<()> {
     // TUI 应用中禁用控制台日志（会干扰界面）
     // 如需调试，可以设置 RUST_LOG=off 或输出到文件
-    
+
     // 加载配置
     let config_path = get_config_path();
     let config = load_config(&config_path).unwrap_or_default();
@@ -110,17 +110,17 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
     // 保存配置
     let mut new_config = state.config.clone();
-    new_config.projects = state
-        .projects
-        .iter()
-        .map(|p| p.into())
-        .collect();
+    new_config.projects = state.projects.iter().map(|p| p.into()).collect();
     let config_path = get_config_path();
     let _ = save_config(&new_config, &config_path);
 
     // 恢复终端
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
 
     Ok(())

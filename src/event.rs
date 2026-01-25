@@ -489,7 +489,7 @@ fn handle_help_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<bool>
 /// 处理设置模式
 fn handle_settings_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<bool> {
     use crate::ui::SettingItem;
-    
+
     match key.code {
         KeyCode::Esc | KeyCode::Char(',') => {
             state.exit_mode();
@@ -562,7 +562,7 @@ fn start_shell_for_active_project(
         if needs_shell {
             let pty_id = format!("shell-{}", uuid::Uuid::new_v4());
             let pty_tx = state.pty_tx.clone();
-            
+
             match pty_manager.create_shell(&pty_id, &path, 24, 80, pty_tx) {
                 Ok(handle) => {
                     if let Some(project) = state.active_project_mut() {
@@ -583,10 +583,7 @@ fn start_shell_for_active_project(
 }
 
 /// 在 Dev Terminal 执行命令（覆盖现有进程）
-fn execute_command_in_dev(
-    state: &mut AppState,
-    pty_manager: &PtyManager,
-) -> anyhow::Result<()> {
+fn execute_command_in_dev(state: &mut AppState, pty_manager: &PtyManager) -> anyhow::Result<()> {
     use crate::project::{detect_package_manager, CommandType};
 
     let command_idx = state.command_palette_idx;
@@ -619,14 +616,8 @@ fn execute_command_in_dev(
         let pty_id = format!("dev-{}", uuid::Uuid::new_v4());
         let pty_tx = state.pty_tx.clone();
 
-        let handle = pty_manager.run_shell_command(
-            &pty_id,
-            &full_command,
-            &working_dir,
-            24,
-            80,
-            pty_tx,
-        )?;
+        let handle =
+            pty_manager.run_shell_command(&pty_id, &full_command, &working_dir, 24, 80, pty_tx)?;
 
         if let Some(project) = state.active_project_mut() {
             project.dev_pty = Some(handle);

@@ -46,12 +46,12 @@ pub fn draw_terminal_panel(
         if let Ok(parser) = pty_handle.parser.try_lock() {
             let screen = parser.screen();
             let mut lines: Vec<Line> = Vec::new();
-            
+
             // 使用屏幕的实际大小
             let screen_rows = screen.size().0 as usize;
             let screen_cols = screen.size().1 as usize;
             let visible_rows = inner.height as usize;
-            
+
             // 找到有内容的最后一行
             let mut last_content_row = 0;
             for row in 0..screen_rows {
@@ -63,7 +63,7 @@ pub fn draw_terminal_panel(
                     }
                 }
             }
-            
+
             // 计算起始行（考虑滚动偏移）
             // scroll_offset > 0 表示向上滚动查看更早的内容
             let base_start = if last_content_row >= visible_rows {
@@ -71,15 +71,15 @@ pub fn draw_terminal_panel(
             } else {
                 0
             };
-            
+
             // 应用滚动偏移（向上滚动）
             let start_row = base_start.saturating_sub(scroll_offset);
-            
+
             for row in start_row..screen_rows.min(start_row + visible_rows) {
                 let mut spans: Vec<Span> = Vec::new();
                 let mut current_text = String::new();
                 let mut current_style = Style::default();
-                
+
                 for col in 0..screen_cols.min(inner.width as usize) {
                     let cell = screen.cell(row as u16, col as u16);
                     if let Some(cell) = cell {
@@ -89,32 +89,32 @@ pub fn draw_terminal_panel(
                         } else {
                             char_content.chars().next().unwrap_or(' ')
                         };
-                        
+
                         // 转换 vt100 颜色到 ratatui 颜色
                         let new_style = vt100_to_ratatui_style(cell);
-                        
+
                         // 如果样式变化，保存当前 span 并开始新的
                         if new_style != current_style && !current_text.is_empty() {
                             spans.push(Span::styled(current_text.clone(), current_style));
                             current_text.clear();
                         }
-                        
+
                         current_style = new_style;
                         current_text.push(char_to_add);
                     } else {
                         current_text.push(' ');
                     }
                 }
-                
+
                 // 添加剩余文本（保留行，即使是空的）
                 let trimmed = current_text.trim_end();
                 if !trimmed.is_empty() {
                     spans.push(Span::styled(trimmed.to_string(), current_style));
                 }
-                
+
                 lines.push(Line::from(spans));
             }
-            
+
             // 如果完全没有内容，显示等待提示
             if lines.iter().all(|l| l.spans.is_empty()) {
                 let hint = if pty_handle.running {
@@ -122,8 +122,7 @@ pub fn draw_terminal_panel(
                 } else {
                     i18n.shell_ended()
                 };
-                let paragraph = Paragraph::new(hint)
-                    .style(Style::default().fg(theme.border));
+                let paragraph = Paragraph::new(hint).style(Style::default().fg(theme.border));
                 frame.render_widget(paragraph, inner);
             } else {
                 let paragraph = Paragraph::new(lines);
@@ -131,8 +130,7 @@ pub fn draw_terminal_panel(
             }
         } else {
             // 无法获取锁，显示加载中
-            let paragraph = Paragraph::new(i18n.loading())
-                .style(Style::default().fg(theme.border));
+            let paragraph = Paragraph::new(i18n.loading()).style(Style::default().fg(theme.border));
             frame.render_widget(paragraph, inner);
         }
     } else {
@@ -154,16 +152,16 @@ pub fn draw_terminal_panel(
 /// 将 vt100 Cell 的颜色转换为 ratatui Style
 fn vt100_to_ratatui_style(cell: &vt100::Cell) -> Style {
     let mut style = Style::default();
-    
+
     // 前景色
     style = style.fg(vt100_color_to_ratatui(cell.fgcolor()));
-    
+
     // 背景色
     let bg = vt100_color_to_ratatui(cell.bgcolor());
     if bg != Color::Reset {
         style = style.bg(bg);
     }
-    
+
     // 文字样式
     if cell.bold() {
         style = style.add_modifier(Modifier::BOLD);
@@ -177,7 +175,7 @@ fn vt100_to_ratatui_style(cell: &vt100::Cell) -> Style {
     if cell.inverse() {
         style = style.add_modifier(Modifier::REVERSED);
     }
-    
+
     style
 }
 

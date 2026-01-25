@@ -50,7 +50,7 @@ pub fn draw_ui(frame: &mut Frame, state: &AppState, theme: &Theme) {
         .split(content_chunks[1]);
 
     let i18n = state.i18n();
-    
+
     // Dev Terminal 标题（如果暂停则显示状态，如果滚动则显示提示）
     let (dev_title, dev_scroll_offset) = if let Some(project) = state.active_project() {
         let scroll = project.dev_scroll_offset;
@@ -69,7 +69,7 @@ pub fn draw_ui(frame: &mut Frame, state: &AppState, theme: &Theme) {
     } else {
         (i18n.dev_server().to_string(), 0)
     };
-    
+
     // 绘制 Dev Terminal
     draw_terminal_panel(
         frame,
@@ -160,12 +160,8 @@ fn draw_status_bar(frame: &mut Frame, area: Rect, state: &AppState, theme: &Them
     } else {
         // 根据焦点区域显示不同的快捷键提示
         match state.focus {
-            FocusArea::Sidebar | FocusArea::DevTerminal => {
-                i18n.status_hint_sidebar().to_string()
-            }
-            FocusArea::ShellTerminal => {
-                i18n.status_hint_shell().to_string()
-            }
+            FocusArea::Sidebar | FocusArea::DevTerminal => i18n.status_hint_sidebar().to_string(),
+            FocusArea::ShellTerminal => i18n.status_hint_shell().to_string(),
         }
     };
 
@@ -219,7 +215,8 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
     frame.render_widget(block, area);
 
     let help_text = match state.language() {
-        crate::i18n::Language::English => r#"
+        crate::i18n::Language::English => {
+            r#"
   PROJECT NAVIGATION
   ──────────────────
   1-9              Quick switch to project
@@ -253,8 +250,10 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
   ?                Toggle this help
 
   Press Esc or ? to close
-"#,
-        crate::i18n::Language::Chinese => r#"
+"#
+        }
+        crate::i18n::Language::Chinese => {
+            r#"
   项目导航
   ────────
   1-9              快速切换项目
@@ -288,7 +287,8 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
   ?                帮助
 
   按 Esc 或 ? 关闭
-"#,
+"#
+        }
     };
 
     let paragraph = Paragraph::new(help_text).style(Style::default().fg(theme.fg));

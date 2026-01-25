@@ -32,9 +32,10 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
 
     // 构建项目列表项
     let items: Vec<ListItem> = if state.projects.is_empty() {
-        vec![ListItem::new(Line::from(vec![
-            Span::styled(i18n.no_projects(), Style::default().fg(theme.border)),
-        ]))]
+        vec![ListItem::new(Line::from(vec![Span::styled(
+            i18n.no_projects(),
+            Style::default().fg(theme.border),
+        )]))]
     } else {
         state
             .projects
@@ -53,9 +54,13 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
 
                 // 构建显示文本，箭头后带空格
                 let prefix = if is_selected { "▶ " } else { "  " };
-                
+
                 // 状态指示器：运行中 ●、暂停 ⏸、无 (空)
-                let is_suspended = project.dev_pty.as_ref().map(|p| p.suspended).unwrap_or(false);
+                let is_suspended = project
+                    .dev_pty
+                    .as_ref()
+                    .map(|p| p.suspended)
+                    .unwrap_or(false);
                 let (status, status_style) = if is_suspended {
                     (" ⏸", Style::default().fg(theme.warning))
                 } else if is_running {
@@ -75,9 +80,7 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
 
                 // 角标样式：稍暗的颜色
                 let badge_style = if is_selected {
-                    Style::default()
-                        .fg(theme.selection_fg)
-                        .bg(theme.selection)
+                    Style::default().fg(theme.selection_fg).bg(theme.selection)
                 } else {
                     Style::default().fg(theme.border)
                 };

@@ -87,7 +87,9 @@ impl I18n {
     // === 状态栏提示 ===
     pub fn status_hint_sidebar(&self) -> &'static str {
         match self.lang {
-            Language::English => " Tab: Project | Enter: Shell | r: Run | s: Stop | ,: Settings | ?: Help",
+            Language::English => {
+                " Tab: Project | Enter: Shell | r: Run | s: Stop | ,: Settings | ?: Help"
+            }
             Language::Chinese => " Tab: 切换 | Enter: 终端 | r: 运行 | s: 停止 | ,: 设置 | ?: 帮助",
         }
     }
