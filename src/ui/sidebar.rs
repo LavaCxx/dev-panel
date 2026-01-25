@@ -1,5 +1,5 @@
 //! 侧边栏组件
-//! 显示项目列表
+//! 显示项目列表和进程资源使用信息
 
 use crate::app::{AppState, FocusArea};
 use crate::ui::Theme;
@@ -29,6 +29,9 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(border_color))
         .style(Style::default().bg(theme.bg));
+
+    // 计算可用宽度（减去边框和内边距）
+    let content_width = area.width.saturating_sub(2) as usize;
 
     // 构建项目列表项
     let items: Vec<ListItem> = if state.projects.is_empty() {
@@ -71,6 +74,10 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                     ("", Style::default())
                 };
 
+                // 资源信息的预估宽度（用于计算项目名称最大宽度）
+                // 格式: " 100%|999.9M" 约 12 个字符
+                let resource_info_width = if is_running { 12 } else { 0 };
+
                 // 主样式
                 let style = if is_selected {
                     Style::default()
@@ -98,12 +105,58 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                     Style::default().fg(theme.border)
                 };
 
-                ListItem::new(Line::from(vec![
+                // 资源信息样式 - CPU 使用黄色，内存使用青色
+                let cpu_style = if is_selected {
+                    Style::default().fg(theme.warning).bg(theme.selection)
+                } else {
+                    Style::default().fg(theme.warning)
+                };
+                
+                let mem_style = if is_selected {
+                    Style::default().fg(theme.info).bg(theme.selection)
+                } else {
+                    Style::default().fg(theme.info)
+                };
+                
+                let separator_style = if is_selected {
+                    Style::default().fg(theme.border).bg(theme.selection)
+                } else {
+                    Style::default().fg(theme.border)
+                };
+
+                // 计算项目名称的最大宽度
+                // 格式: "1 ▶ project_name ● 50%|128M"
+                let fixed_width = number_badge.len() + prefix.len() + 1 + status_icon.len() + resource_info_width;
+                let max_name_width = content_width.saturating_sub(fixed_width);
+                
+                // 截断项目名称（如果需要）
+                let display_name = project.display_name();
+                let truncated_name = if display_name.len() > max_name_width && max_name_width > 3 {
+                    format!("{}...", &display_name[..max_name_width.saturating_sub(3)])
+                } else {
+                    display_name.to_string()
+                };
+
+                // 构建资源信息的 spans（分别着色）
+                let mut spans = vec![
                     Span::styled(number_badge, badge_style),
                     Span::styled(prefix, selector_style),
-                    Span::styled(project.display_name(), style),
+                    Span::styled(truncated_name, style),
                     Span::styled(format!(" {}", status_icon), status_style),
-                ]))
+                ];
+                
+                // 如果有资源信息，分别添加 CPU 和内存（不同颜色）
+                if is_running {
+                    if let Some(ref pty) = project.dev_pty {
+                        let usage = &pty.resource_usage;
+                        spans.push(Span::styled(" ", separator_style));
+                        spans.push(Span::styled(usage.format_cpu(), cpu_style));
+                        spans.push(Span::styled("|", separator_style));
+                        spans.push(Span::styled(usage.format_memory(), mem_style));
+                    }
+                }
+
+                ListItem::new(Line::from(spans))
             })
             .collect()
     };

@@ -327,6 +327,10 @@ pub struct AppState {
     pub frame_count: u64,
     /// 目录浏览器状态
     pub dir_browser: DirectoryBrowser,
+    /// 系统信息（用于获取进程 CPU/内存使用）
+    pub system: sysinfo::System,
+    /// 上次更新资源信息的帧计数
+    resource_update_frame: u64,
 }
 
 impl AppState {
@@ -352,6 +356,14 @@ impl AppState {
             start_time: Instant::now(),
             frame_count: 0,
             dir_browser: DirectoryBrowser::new(),
+            system: {
+                // 初始化 sysinfo 并进行第一次刷新
+                // 这样后续的 CPU 使用率计算才能正常工作
+                let mut sys = sysinfo::System::new();
+                sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                sys
+            },
+            resource_update_frame: 0,
         }
     }
 
@@ -369,6 +381,42 @@ impl AppState {
         if let Some(ref msg) = self.status_message {
             if msg.is_expired() {
                 self.status_message = None;
+            }
+        }
+
+        // 每 30 帧（约每秒）更新一次进程资源信息
+        // 这样可以避免频繁刷新系统信息带来的性能开销
+        if self.frame_count - self.resource_update_frame >= 30 {
+            self.update_resource_usage();
+            self.resource_update_frame = self.frame_count;
+        }
+    }
+
+    /// 更新所有运行中进程的资源使用信息
+    fn update_resource_usage(&mut self) {
+        use sysinfo::ProcessesToUpdate;
+
+        // 收集所有需要刷新的进程 PID
+        let pids: Vec<sysinfo::Pid> = self
+            .projects
+            .iter()
+            .filter_map(|p| p.dev_pty.as_ref())
+            .filter_map(|pty| pty.pid)
+            .map(sysinfo::Pid::from_u32)
+            .collect();
+
+        if pids.is_empty() {
+            return;
+        }
+
+        // 刷新指定进程的信息（包括子进程）
+        // 使用 All 来确保能获取到子进程信息
+        self.system.refresh_processes(ProcessesToUpdate::All, true);
+
+        // 更新每个项目的资源使用信息
+        for project in &mut self.projects {
+            if let Some(ref mut pty) = project.dev_pty {
+                pty.update_resource_usage(&self.system);
             }
         }
     }

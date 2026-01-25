@@ -12,6 +12,42 @@ pub use manager::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// 进程资源使用信息
+#[derive(Debug, Clone, Default)]
+pub struct ProcessResourceUsage {
+    /// CPU 使用率（百分比，0.0-100.0+）
+    pub cpu_percent: f32,
+    /// 内存使用量（字节）
+    pub memory_bytes: u64,
+}
+
+impl ProcessResourceUsage {
+    /// 格式化内存大小为人类可读格式
+    pub fn format_memory(&self) -> String {
+        let bytes = self.memory_bytes;
+        if bytes == 0 {
+            "--".to_string() // 数据未就绪
+        } else if bytes < 1024 {
+            format!("{}B", bytes)
+        } else if bytes < 1024 * 1024 {
+            format!("{:.1}K", bytes as f64 / 1024.0)
+        } else if bytes < 1024 * 1024 * 1024 {
+            format!("{:.1}M", bytes as f64 / (1024.0 * 1024.0))
+        } else {
+            format!("{:.2}G", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+        }
+    }
+
+    /// 格式化 CPU 使用率
+    pub fn format_cpu(&self) -> String {
+        if self.cpu_percent == 0.0 && self.memory_bytes == 0 {
+            "--".to_string() // 数据未就绪
+        } else {
+            format!("{:.0}%", self.cpu_percent)
+        }
+    }
+}
+
 /// PTY 句柄
 /// 包含对 PTY 会话的引用和控制
 pub struct PtyHandle {
@@ -27,6 +63,8 @@ pub struct PtyHandle {
     pub parser: Arc<Mutex<vt100::Parser>>,
     /// PTY writer（用于发送输入）
     pub writer: Option<Box<dyn std::io::Write + Send>>,
+    /// 进程资源使用信息（包括所有子进程的总和）
+    pub resource_usage: ProcessResourceUsage,
 }
 
 impl std::fmt::Debug for PtyHandle {
@@ -36,6 +74,7 @@ impl std::fmt::Debug for PtyHandle {
             .field("running", &self.running)
             .field("suspended", &self.suspended)
             .field("pid", &self.pid)
+            .field("resource_usage", &self.resource_usage)
             .finish_non_exhaustive()
     }
 }
@@ -50,6 +89,42 @@ impl PtyHandle {
             pid: None,
             parser: Arc::new(Mutex::new(vt100::Parser::new(rows, cols, 1000))),
             writer: None,
+            resource_usage: ProcessResourceUsage::default(),
+        }
+    }
+
+    /// 更新进程资源使用信息
+    /// 会统计整个进程树（包括所有子进程）的资源使用
+    pub fn update_resource_usage(&mut self, system: &sysinfo::System) {
+        if let Some(pid) = self.pid {
+            let pid = sysinfo::Pid::from_u32(pid);
+            
+            // 收集整个进程树的资源使用
+            let mut total_cpu: f32 = 0.0;
+            let mut total_memory: u64 = 0;
+            
+            // 获取所有子进程的 PID
+            let child_pids = collect_process_tree(system, pid);
+            
+            // 如果找到了进程，统计资源使用
+            if !child_pids.is_empty() {
+                for child_pid in child_pids {
+                    if let Some(process) = system.process(child_pid) {
+                        total_cpu += process.cpu_usage();
+                        total_memory += process.memory();
+                    }
+                }
+            } else {
+                // 如果进程树为空，尝试直接获取根进程的信息
+                // 这可以处理某些 PTY 实现中 PID 跟踪不准确的情况
+                if let Some(process) = system.process(pid) {
+                    total_cpu = process.cpu_usage();
+                    total_memory = process.memory();
+                }
+            }
+            
+            self.resource_usage.cpu_percent = total_cpu;
+            self.resource_usage.memory_bytes = total_memory;
         }
     }
 
@@ -270,7 +345,64 @@ pub enum PtyEvent {
     Error { pty_id: String, message: String },
 }
 
-/// Windows 辅助函数：获取整个进程树
+/// 辅助函数：使用 sysinfo 收集整个进程树
+/// 递归查找指定 PID 的所有子进程、孙进程等
+/// 返回包含根进程及所有后代进程的 PID 列表
+fn collect_process_tree(system: &sysinfo::System, root_pid: sysinfo::Pid) -> Vec<sysinfo::Pid> {
+    use std::collections::{HashSet, VecDeque};
+
+    let mut result = Vec::new();
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::new();
+
+    // 首先检查根进程是否存在
+    let root_exists = system.process(root_pid).is_some();
+    
+    if root_exists {
+        queue.push_back(root_pid);
+        visited.insert(root_pid);
+    }
+
+    // BFS 遍历进程树
+    while let Some(current_pid) = queue.pop_front() {
+        result.push(current_pid);
+
+        // 查找所有以 current_pid 为父进程的子进程
+        for (pid, process) in system.processes() {
+            if process.parent() == Some(current_pid) && !visited.contains(pid) {
+                visited.insert(*pid);
+                queue.push_back(*pid);
+            }
+        }
+    }
+
+    // 如果根进程不存在（可能被 exec 替换了），直接查找以 root_pid 为父进程的子进程
+    // 这可以处理 shell -c "command" 场景中 shell 被 exec 替换的情况
+    if !root_exists {
+        for (pid, process) in system.processes() {
+            if process.parent() == Some(root_pid) && !visited.contains(pid) {
+                visited.insert(*pid);
+                result.push(*pid);
+                // 递归查找这些子进程的后代
+                let mut sub_queue = VecDeque::new();
+                sub_queue.push_back(*pid);
+                while let Some(current) = sub_queue.pop_front() {
+                    for (child_pid, child_process) in system.processes() {
+                        if child_process.parent() == Some(current) && !visited.contains(child_pid) {
+                            visited.insert(*child_pid);
+                            result.push(*child_pid);
+                            sub_queue.push_back(*child_pid);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Windows 辅助函数：获取整个进程树（用于暂停/恢复）
 /// 递归查找指定 PID 的所有子进程、孙进程等
 /// 返回包含根进程及所有后代进程的 PID 集合
 #[cfg(windows)]

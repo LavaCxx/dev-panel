@@ -46,6 +46,9 @@ vt100 = "0.15"
 # 异步事件流
 futures = "0.3"
 
+# 系统信息（获取进程 CPU/内存使用）
+sysinfo = "0.32"
+
 # Unix 信号处理（用于进程暂停/恢复）
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -33,7 +33,7 @@ pub fn draw_ui(frame: &mut Frame, state: &AppState, theme: &Theme) {
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(28), // 侧边栏宽度
+            Constraint::Length(38), // 侧边栏宽度（增加以显示 CPU/内存信息）
             Constraint::Min(1),     // 工作区
         ])
         .split(main_chunks[1]);

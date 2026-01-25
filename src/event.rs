@@ -14,8 +14,8 @@ use crossterm::event::{
 };
 use std::path::PathBuf;
 
-/// 侧边栏宽度常量
-const SIDEBAR_WIDTH: u16 = 28;
+/// 侧边栏宽度常量（增加以显示 CPU/内存信息）
+const SIDEBAR_WIDTH: u16 = 38;
 
 /// 处理 crossterm 事件
 pub fn handle_event(
