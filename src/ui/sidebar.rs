@@ -111,13 +111,13 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                 } else {
                     Style::default().fg(theme.warning)
                 };
-                
+
                 let mem_style = if is_selected {
                     Style::default().fg(theme.info).bg(theme.selection)
                 } else {
                     Style::default().fg(theme.info)
                 };
-                
+
                 let separator_style = if is_selected {
                     Style::default().fg(theme.border).bg(theme.selection)
                 } else {
@@ -126,9 +126,10 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
 
                 // 计算项目名称的最大宽度
                 // 格式: "1 ▶ project_name ● 50%|128M"
-                let fixed_width = number_badge.len() + prefix.len() + 1 + status_icon.len() + resource_info_width;
+                let fixed_width =
+                    number_badge.len() + prefix.len() + 1 + status_icon.len() + resource_info_width;
                 let max_name_width = content_width.saturating_sub(fixed_width);
-                
+
                 // 截断项目名称（如果需要）
                 let display_name = project.display_name();
                 let truncated_name = if display_name.len() > max_name_width && max_name_width > 3 {
@@ -144,7 +145,7 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                     Span::styled(truncated_name, style),
                     Span::styled(format!(" {}", status_icon), status_style),
                 ];
-                
+
                 // 如果有资源信息，分别添加 CPU 和内存（不同颜色）
                 if is_running {
                     if let Some(ref pty) = project.dev_pty {
