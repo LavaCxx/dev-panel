@@ -114,17 +114,50 @@ impl PtyManager {
         cmd.env("COLORTERM", "truecolor");
 
         // 继承重要的环境变量
-        for key in &[
-            "HOME",
-            "USER",
-            "SHELL",
-            "PATH",
-            "LANG",
-            "LC_ALL",
-            "STARSHIP_SHELL",
-        ] {
-            if let Ok(val) = std::env::var(key) {
-                cmd.env(key, val);
+        // Unix 环境变量
+        #[cfg(unix)]
+        {
+            for key in &[
+                "HOME",
+                "USER",
+                "SHELL",
+                "PATH",
+                "LANG",
+                "LC_ALL",
+                "STARSHIP_SHELL",
+            ] {
+                if let Ok(val) = std::env::var(key) {
+                    cmd.env(key, val);
+                }
+            }
+        }
+
+        // Windows 环境变量 - PowerShell 需要这些才能正常启动
+        #[cfg(windows)]
+        {
+            for key in &[
+                "PATH",
+                "SYSTEMROOT",
+                "SYSTEMDRIVE",
+                "WINDIR",
+                "USERPROFILE",
+                "HOMEDRIVE",
+                "HOMEPATH",
+                "USERNAME",
+                "COMPUTERNAME",
+                "TEMP",
+                "TMP",
+                "APPDATA",
+                "LOCALAPPDATA",
+                "PROGRAMDATA",
+                "PROGRAMFILES",
+                "PROGRAMFILES(X86)",
+                "COMMONPROGRAMFILES",
+                "PSModulePath",
+            ] {
+                if let Ok(val) = std::env::var(key) {
+                    cmd.env(key, val);
+                }
             }
         }
 
