@@ -278,6 +278,7 @@ fn handle_normal_mode(
             if let Some(project) = state.active_project_mut() {
                 if project.dev_pty.is_some() {
                     project.dev_pty = None;
+                    project.mark_dev_stopped();
                     let msg = state.i18n().dev_stopped().to_string();
                     state.set_status(&msg);
                 }
@@ -621,6 +622,7 @@ fn execute_command_in_dev(state: &mut AppState, pty_manager: &PtyManager) -> any
 
         if let Some(project) = state.active_project_mut() {
             project.dev_pty = Some(handle);
+            project.mark_dev_started();
         }
         state.set_status(&format!("Running: {}", cmd_name));
     }

@@ -52,23 +52,36 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                     "  ".to_string()
                 };
 
-                // 构建显示文本，箭头后带空格
+                // 选中指示器
                 let prefix = if is_selected { "▶ " } else { "  " };
 
-                // 状态指示器：运行中 ●、暂停 ⏸、无 (空)
+                // 状态指示器：运行中/暂停/无
                 let is_suspended = project
                     .dev_pty
                     .as_ref()
                     .map(|p| p.suspended)
                     .unwrap_or(false);
-                let (status, status_style) = if is_suspended {
+
+                let (status_icon, status_style) = if is_suspended {
                     (" ⏸", Style::default().fg(theme.warning))
                 } else if is_running {
-                    (" ●", Style::default().fg(theme.success))
+                    // 运行中时显示 spinner 动画
+                    (state.spinner_frame(), Style::default().fg(theme.success))
                 } else {
                     ("", Style::default())
                 };
 
+                // 运行时间（如果有）
+                let uptime = if is_running && !is_suspended {
+                    project
+                        .dev_uptime()
+                        .map(|t| format!(" {}", t))
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+
+                // 主样式
                 let style = if is_selected {
                     Style::default()
                         .fg(theme.selection_fg)
@@ -78,18 +91,41 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                     Style::default().fg(theme.fg)
                 };
 
-                // 角标样式：稍暗的颜色
+                // 角标样式
                 let badge_style = if is_selected {
-                    Style::default().fg(theme.selection_fg).bg(theme.selection)
+                    Style::default()
+                        .fg(theme.info)
+                        .bg(theme.selection)
+                        .add_modifier(Modifier::DIM)
                 } else {
                     Style::default().fg(theme.border)
                 };
 
+                // 选择器样式
+                let selector_style = if is_selected {
+                    Style::default().fg(theme.info).bg(theme.selection)
+                } else {
+                    Style::default().fg(theme.border)
+                };
+
+                // 运行时间样式
+                let uptime_style = if is_selected {
+                    Style::default()
+                        .fg(theme.border)
+                        .bg(theme.selection)
+                        .add_modifier(Modifier::DIM)
+                } else {
+                    Style::default()
+                        .fg(theme.border)
+                        .add_modifier(Modifier::DIM)
+                };
+
                 ListItem::new(Line::from(vec![
                     Span::styled(number_badge, badge_style),
-                    Span::styled(prefix, style),
+                    Span::styled(prefix, selector_style),
                     Span::styled(project.display_name(), style),
-                    Span::styled(status, status_style),
+                    Span::styled(uptime, uptime_style),
+                    Span::styled(format!(" {}", status_icon), status_style),
                 ]))
             })
             .collect()

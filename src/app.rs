@@ -7,6 +7,8 @@ use crate::config::AppConfig;
 use crate::i18n::{I18n, Language};
 use crate::project::Project;
 use crate::pty::PtyEvent;
+use crate::ui::Spinner;
+use std::time::Instant;
 use tokio::sync::mpsc;
 
 /// 焦点区域枚举
@@ -54,6 +56,48 @@ pub enum AppMode {
     Confirm(String), // 确认对话框，参数为确认消息
 }
 
+/// 状态消息（带时间戳，用于自动淡出）
+pub struct StatusMessage {
+    pub text: String,
+    pub created_at: Instant,
+}
+
+impl StatusMessage {
+    pub fn new(text: String) -> Self {
+        Self {
+            text,
+            created_at: Instant::now(),
+        }
+    }
+
+    /// 获取消息年龄（秒）
+    pub fn age_secs(&self) -> f64 {
+        self.created_at.elapsed().as_secs_f64()
+    }
+
+    /// 消息是否应该淡出（超过 3 秒）
+    pub fn should_fade(&self) -> bool {
+        self.age_secs() > 3.0
+    }
+
+    /// 消息是否过期（超过 5 秒）
+    pub fn is_expired(&self) -> bool {
+        self.age_secs() > 5.0
+    }
+
+    /// 获取淡出透明度 (1.0 = 完全可见, 0.0 = 完全透明)
+    pub fn opacity(&self) -> f64 {
+        let age = self.age_secs();
+        if age < 3.0 {
+            1.0
+        } else if age < 5.0 {
+            1.0 - (age - 3.0) / 2.0
+        } else {
+            0.0
+        }
+    }
+}
+
 /// 全局应用状态
 pub struct AppState {
     /// 项目列表
@@ -78,8 +122,14 @@ pub struct AppState {
     pub settings_idx: usize,
     /// 输入缓冲区（用于各种输入场景）
     pub input_buffer: String,
-    /// 状态栏消息
-    pub status_message: Option<String>,
+    /// 状态栏消息（带时间戳）
+    pub status_message: Option<StatusMessage>,
+    /// 全局 Spinner（用于加载动画）
+    pub spinner: Spinner,
+    /// 应用启动时间
+    pub start_time: Instant,
+    /// 当前帧计数（用于动画）
+    pub frame_count: u64,
 }
 
 impl AppState {
@@ -100,7 +150,27 @@ impl AppState {
             settings_idx: 0,
             input_buffer: String::new(),
             status_message: None,
+            spinner: Spinner::dots(),
+            start_time: Instant::now(),
+            frame_count: 0,
         }
+    }
+
+    /// 增加帧计数（每帧调用）
+    pub fn tick(&mut self) {
+        self.frame_count = self.frame_count.wrapping_add(1);
+
+        // 自动清除过期的状态消息
+        if let Some(ref msg) = self.status_message {
+            if msg.is_expired() {
+                self.status_message = None;
+            }
+        }
+    }
+
+    /// 获取 spinner 当前帧
+    pub fn spinner_frame(&self) -> &'static str {
+        self.spinner.frame()
     }
 
     /// 获取当前语言
@@ -174,12 +244,25 @@ impl AppState {
 
     /// 设置状态消息
     pub fn set_status(&mut self, message: &str) {
-        self.status_message = Some(message.to_string());
+        self.status_message = Some(StatusMessage::new(message.to_string()));
     }
 
     /// 清除状态消息
     pub fn clear_status(&mut self) {
         self.status_message = None;
+    }
+
+    /// 获取状态消息文本（如果有）
+    pub fn status_text(&self) -> Option<&str> {
+        self.status_message.as_ref().map(|m| m.text.as_str())
+    }
+
+    /// 获取状态消息透明度
+    pub fn status_opacity(&self) -> f64 {
+        self.status_message
+            .as_ref()
+            .map(|m| m.opacity())
+            .unwrap_or(0.0)
     }
 
     /// 进入命令面板模式

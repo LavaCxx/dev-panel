@@ -86,6 +86,9 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         // 处理 PTY 事件
         handle_pty_events(&mut state);
 
+        // 更新动画帧和过期消息
+        state.tick();
+
         // 渲染 UI
         terminal.draw(|frame| {
             draw_ui(frame, &state, &theme);
@@ -96,14 +99,14 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
             break;
         }
 
-        // 等待事件（带超时，以便定期刷新 PTY 输出）
+        // 等待事件（带超时，以便定期刷新 PTY 输出和动画）
         tokio::select! {
             maybe_event = event_stream.next() => {
                 if let Some(Ok(evt)) = maybe_event {
                     event::handle_event(&mut state, evt, &pty_manager)?;
                 }
             }
-            // 每 50ms 刷新一次，确保 PTY 输出及时更新
+            // 每 50ms 刷新一次，确保 PTY 输出和动画及时更新
             _ = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {}
         }
     }
