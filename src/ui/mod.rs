@@ -2,6 +2,7 @@
 //! 包含所有 UI 相关组件
 
 mod command_palette;
+mod dir_browser;
 mod input_popup;
 mod layout;
 mod settings_popup;
@@ -11,6 +12,7 @@ mod terminal;
 mod theme;
 
 pub use command_palette::*;
+pub use dir_browser::*;
 pub use input_popup::*;
 pub use layout::*;
 pub use settings_popup::*;

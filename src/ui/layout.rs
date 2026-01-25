@@ -3,8 +3,8 @@
 
 use crate::app::{AppMode, AppState, FocusArea};
 use crate::ui::{
-    draw_command_palette, draw_input_popup, draw_settings_popup, draw_sidebar, draw_terminal_panel,
-    Theme,
+    draw_command_palette, draw_dir_browser, draw_input_popup, draw_settings_popup, draw_sidebar,
+    draw_terminal_panel, Theme,
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -112,6 +112,9 @@ pub fn draw_ui(frame: &mut Frame, state: &AppState, theme: &Theme) {
                 &state.input_buffer,
                 theme,
             );
+        }
+        AppMode::BrowseDirectory => {
+            draw_dir_browser(frame, state, theme);
         }
         AppMode::AddCommand => {
             draw_input_popup(

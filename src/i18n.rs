@@ -84,6 +84,20 @@ impl I18n {
         }
     }
 
+    pub fn select_directory(&self) -> &'static str {
+        match self.lang {
+            Language::English => " Select Directory ",
+            Language::Chinese => " 选择目录 ",
+        }
+    }
+
+    pub fn empty_directory(&self) -> &'static str {
+        match self.lang {
+            Language::English => "  (empty directory)",
+            Language::Chinese => "  (空目录)",
+        }
+    }
+
     // === 状态栏提示 ===
     pub fn status_hint_sidebar(&self) -> &'static str {
         match self.lang {

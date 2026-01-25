@@ -49,7 +49,8 @@ pub enum AppMode {
     Normal,
     CommandPalette,
     AddCommand,
-    AddProject,
+    AddProject,        // 旧的手动输入模式（保留）
+    BrowseDirectory,   // 新的目录浏览器模式
     EditAlias,
     Help,
     Settings,
@@ -98,6 +99,131 @@ impl StatusMessage {
     }
 }
 
+/// 目录浏览器状态
+#[derive(Debug, Clone)]
+pub struct DirectoryBrowser {
+    /// 当前浏览的目录
+    pub current_dir: std::path::PathBuf,
+    /// 目录中的条目列表（只包含文件夹）
+    pub entries: Vec<DirEntry>,
+    /// 当前选中的索引
+    pub selected_idx: usize,
+    /// 是否显示隐藏文件
+    pub show_hidden: bool,
+}
+
+/// 目录条目
+#[derive(Debug, Clone)]
+pub struct DirEntry {
+    pub name: String,
+    pub path: std::path::PathBuf,
+    pub is_dir: bool,
+    pub has_package_json: bool,
+}
+
+impl DirectoryBrowser {
+    /// 创建新的目录浏览器，从用户主目录开始
+    pub fn new() -> Self {
+        let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
+        let mut browser = Self {
+            current_dir: home,
+            entries: Vec::new(),
+            selected_idx: 0,
+            show_hidden: false,
+        };
+        browser.refresh();
+        browser
+    }
+
+    /// 刷新当前目录的内容
+    pub fn refresh(&mut self) {
+        self.entries.clear();
+        self.selected_idx = 0;
+
+        if let Ok(read_dir) = std::fs::read_dir(&self.current_dir) {
+            let mut entries: Vec<DirEntry> = read_dir
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    // 过滤隐藏文件（除非 show_hidden）
+                    if !self.show_hidden && name.starts_with('.') {
+                        return false;
+                    }
+                    // 只显示目录
+                    e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                })
+                .map(|e| {
+                    let path = e.path();
+                    let has_package_json = path.join("package.json").exists();
+                    DirEntry {
+                        name: e.file_name().to_string_lossy().to_string(),
+                        path,
+                        is_dir: true,
+                        has_package_json,
+                    }
+                })
+                .collect();
+
+            // 按名称排序
+            entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            self.entries = entries;
+        }
+    }
+
+    /// 进入选中的目录
+    pub fn enter_selected(&mut self) {
+        if let Some(entry) = self.entries.get(self.selected_idx) {
+            if entry.is_dir {
+                self.current_dir = entry.path.clone();
+                self.refresh();
+            }
+        }
+    }
+
+    /// 返回上级目录
+    pub fn go_up(&mut self) {
+        if let Some(parent) = self.current_dir.parent() {
+            self.current_dir = parent.to_path_buf();
+            self.refresh();
+        }
+    }
+
+    /// 选择下一项
+    pub fn select_next(&mut self) {
+        if !self.entries.is_empty() {
+            self.selected_idx = (self.selected_idx + 1) % self.entries.len();
+        }
+    }
+
+    /// 选择上一项
+    pub fn select_prev(&mut self) {
+        if !self.entries.is_empty() {
+            if self.selected_idx == 0 {
+                self.selected_idx = self.entries.len() - 1;
+            } else {
+                self.selected_idx -= 1;
+            }
+        }
+    }
+
+    /// 切换隐藏文件显示
+    pub fn toggle_hidden(&mut self) {
+        self.show_hidden = !self.show_hidden;
+        self.refresh();
+    }
+
+    /// 获取当前选中的条目
+    pub fn selected_entry(&self) -> Option<&DirEntry> {
+        self.entries.get(self.selected_idx)
+    }
+}
+
+impl Default for DirectoryBrowser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// 全局应用状态
 pub struct AppState {
     /// 项目列表
@@ -130,6 +256,8 @@ pub struct AppState {
     pub start_time: Instant,
     /// 当前帧计数（用于动画）
     pub frame_count: u64,
+    /// 目录浏览器状态
+    pub dir_browser: DirectoryBrowser,
 }
 
 impl AppState {
@@ -153,7 +281,14 @@ impl AppState {
             spinner: Spinner::dots(),
             start_time: Instant::now(),
             frame_count: 0,
+            dir_browser: DirectoryBrowser::new(),
         }
+    }
+
+    /// 进入目录浏览模式
+    pub fn enter_browse_mode(&mut self) {
+        self.dir_browser = DirectoryBrowser::new();
+        self.mode = AppMode::BrowseDirectory;
     }
 
     /// 增加帧计数（每帧调用）

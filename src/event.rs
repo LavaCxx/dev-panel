@@ -121,6 +121,7 @@ fn handle_key_event(
         AppMode::Normal => handle_normal_mode(state, key, pty_manager),
         AppMode::CommandPalette => handle_command_palette_mode(state, key, pty_manager),
         AppMode::AddProject => handle_add_project_mode(state, key),
+        AppMode::BrowseDirectory => handle_browse_directory_mode(state, key),
         AppMode::AddCommand => handle_add_command_mode(state, key),
         AppMode::EditAlias => handle_edit_alias_mode(state, key),
         AppMode::Help => handle_help_mode(state, key),
@@ -258,10 +259,9 @@ fn handle_normal_mode(
                 state.set_status(&msg);
             }
         }
-        // a 添加项目
+        // a 添加项目（进入目录浏览器）
         KeyCode::Char('a') => {
-            state.mode = AppMode::AddProject;
-            state.input_buffer.clear();
+            state.enter_browse_mode();
         }
         // c 添加自定义命令
         KeyCode::Char('c') => {
@@ -413,6 +413,97 @@ fn handle_add_project_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Resul
         }
         KeyCode::Backspace => {
             state.input_buffer.pop();
+        }
+        _ => {}
+    }
+    Ok(true)
+}
+
+/// 处理目录浏览模式
+fn handle_browse_directory_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<bool> {
+    match key.code {
+        // Esc 取消
+        KeyCode::Esc => {
+            state.exit_mode();
+        }
+        // 上下导航
+        KeyCode::Char('j') | KeyCode::Down => {
+            state.dir_browser.select_next();
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            state.dir_browser.select_prev();
+        }
+        // Enter 进入目录
+        KeyCode::Enter => {
+            state.dir_browser.enter_selected();
+        }
+        // Backspace 返回上级目录
+        KeyCode::Backspace => {
+            state.dir_browser.go_up();
+        }
+        // 空格：选择目录作为项目
+        KeyCode::Char(' ') => {
+            // 优先检查选中的目录，否则检查当前目录
+            let path_to_add = if let Some(entry) = state.dir_browser.selected_entry() {
+                if entry.has_package_json {
+                    // 选中的目录有 package.json
+                    Some(entry.path.clone())
+                } else {
+                    // 选中的目录没有 package.json，检查当前目录
+                    let current = state.dir_browser.current_dir.clone();
+                    if current.join("package.json").exists() {
+                        Some(current)
+                    } else {
+                        None
+                    }
+                }
+            } else {
+                // 没有选中任何条目，检查当前目录
+                let current = state.dir_browser.current_dir.clone();
+                if current.join("package.json").exists() {
+                    Some(current)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(path) = path_to_add {
+                match Project::load(path) {
+                    Ok(project) => {
+                        let msg = match state.language() {
+                            crate::i18n::Language::English => {
+                                format!("Added project: {}", project.name)
+                            }
+                            crate::i18n::Language::Chinese => {
+                                format!("已添加项目: {}", project.name)
+                            }
+                        };
+                        state.add_project(project);
+                        state.set_status(&msg);
+                        state.exit_mode();
+                    }
+                    Err(e) => {
+                        state.set_status(&format!("Error: {}", e));
+                    }
+                }
+            } else {
+                let msg = match state.language() {
+                    crate::i18n::Language::English => "No package.json found",
+                    crate::i18n::Language::Chinese => "未找到 package.json",
+                };
+                state.set_status(msg);
+            }
+        }
+        // . 切换隐藏文件
+        KeyCode::Char('.') => {
+            state.dir_browser.toggle_hidden();
+        }
+        // ~ 跳转到主目录
+        KeyCode::Char('~') => {
+            if let Some(home) = dirs::home_dir() {
+                state.dir_browser.current_dir = home;
+                state.dir_browser.refresh();
+            }
         }
         _ => {}
     }
