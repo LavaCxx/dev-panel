@@ -140,13 +140,22 @@ impl Project {
     }
 
     /// 获取所有可执行命令（npm scripts + 自定义命令）
+    /// npm scripts 按名称字母顺序排序，自定义命令按添加顺序排在后面
     pub fn get_all_commands(&self) -> Vec<CommandEntry> {
-        let mut commands: Vec<CommandEntry> = self
-            .scripts
-            .iter()
-            .map(|(name, cmd)| CommandEntry::new_npm_script(name, cmd))
+        // 收集并排序 npm scripts（按名称字母顺序）
+        let mut script_names: Vec<_> = self.scripts.keys().collect();
+        script_names.sort();
+
+        let mut commands: Vec<CommandEntry> = script_names
+            .into_iter()
+            .filter_map(|name| {
+                self.scripts
+                    .get(name)
+                    .map(|cmd| CommandEntry::new_npm_script(name, cmd))
+            })
             .collect();
 
+        // 自定义命令按添加顺序追加
         commands.extend(self.custom_commands.clone());
         commands
     }

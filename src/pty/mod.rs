@@ -39,11 +39,22 @@ impl ProcessResourceUsage {
     }
 
     /// 格式化 CPU 使用率
+    /// 注意：多核系统上进程树的 CPU 总和可能超过 100%
     pub fn format_cpu(&self) -> String {
         if self.cpu_percent == 0.0 && self.memory_bytes == 0 {
             "--".to_string() // 数据未就绪
-        } else {
+        } else if self.cpu_percent >= 1000.0 {
+            // 极端情况：超过 1000%（很多核心满载）
             format!("{:.0}%", self.cpu_percent)
+        } else if self.cpu_percent >= 100.0 {
+            // 超过 100%（多个子进程或多核满载）
+            format!("{:.0}%", self.cpu_percent)
+        } else if self.cpu_percent >= 10.0 {
+            // 两位数
+            format!("{:.0}%", self.cpu_percent)
+        } else {
+            // 个位数，保留一位小数
+            format!("{:.1}%", self.cpu_percent)
         }
     }
 }

@@ -14,17 +14,26 @@ use ratatui::{
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SettingItem {
     Language,
+    #[cfg(windows)]
+    WindowsShell,
 }
 
 impl SettingItem {
-    /// 获取所有设置项
+    /// 获取所有设置项（根据平台动态返回）
     pub fn all() -> Vec<Self> {
-        vec![SettingItem::Language]
+        #[cfg(windows)]
+        {
+            vec![SettingItem::Language, SettingItem::WindowsShell]
+        }
+        #[cfg(not(windows))]
+        {
+            vec![SettingItem::Language]
+        }
     }
 
     /// 设置项数量
     pub fn count() -> usize {
-        1
+        Self::all().len()
     }
 }
 
@@ -47,15 +56,29 @@ pub fn draw_settings_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
     frame.render_widget(block, area);
 
     // 构建设置列表
-    let items: Vec<ListItem> = vec![
-        // 语言设置
-        create_setting_item(
-            i18n.language(),
-            state.config.settings.language.display_name(),
-            state.settings_idx == 0,
-            theme,
-        ),
-    ];
+    let setting_items = SettingItem::all();
+    let items: Vec<ListItem> = setting_items
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| {
+            let is_selected = state.settings_idx == idx;
+            match item {
+                SettingItem::Language => create_setting_item(
+                    i18n.language(),
+                    state.config.settings.language.display_name(),
+                    is_selected,
+                    theme,
+                ),
+                #[cfg(windows)]
+                SettingItem::WindowsShell => create_setting_item(
+                    i18n.shell(),
+                    state.config.settings.windows_shell.display_name(),
+                    is_selected,
+                    theme,
+                ),
+            }
+        })
+        .collect();
 
     let list = List::new(items);
 

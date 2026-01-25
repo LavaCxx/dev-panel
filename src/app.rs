@@ -441,6 +441,12 @@ impl AppState {
         self.config.settings.language = self.config.settings.language.toggle();
     }
 
+    /// 切换 Windows Shell（仅 Windows 有效）
+    #[cfg(windows)]
+    pub fn toggle_windows_shell(&mut self) {
+        self.config.settings.windows_shell = self.config.settings.windows_shell.toggle();
+    }
+
     /// 获取当前激活的项目（如果有）
     pub fn active_project(&self) -> Option<&Project> {
         self.projects.get(self.active_project_idx)

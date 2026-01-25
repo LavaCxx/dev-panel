@@ -626,6 +626,10 @@ fn handle_settings_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<b
                     SettingItem::Language => {
                         state.toggle_language();
                     }
+                    #[cfg(windows)]
+                    SettingItem::WindowsShell => {
+                        state.toggle_windows_shell();
+                    }
                 }
             }
         }
@@ -677,7 +681,20 @@ fn start_shell_for_active_project(
             let pty_id = format!("shell-{}", uuid::Uuid::new_v4());
             let pty_tx = state.pty_tx.clone();
 
-            match pty_manager.create_shell(&pty_id, &path, 24, 80, pty_tx) {
+            #[cfg(windows)]
+            let shell_config = state.config.settings.windows_shell;
+
+            let result = pty_manager.create_shell(
+                &pty_id,
+                &path,
+                24,
+                80,
+                pty_tx,
+                #[cfg(windows)]
+                shell_config,
+            );
+
+            match result {
                 Ok(handle) => {
                     if let Some(project) = state.active_project_mut() {
                         project.shell_pty = Some(handle);
@@ -730,8 +747,19 @@ fn execute_command_in_dev(state: &mut AppState, pty_manager: &PtyManager) -> any
         let pty_id = format!("dev-{}", uuid::Uuid::new_v4());
         let pty_tx = state.pty_tx.clone();
 
-        let handle =
-            pty_manager.run_shell_command(&pty_id, &full_command, &working_dir, 24, 80, pty_tx)?;
+        #[cfg(windows)]
+        let shell_config = state.config.settings.windows_shell;
+
+        let handle = pty_manager.run_shell_command(
+            &pty_id,
+            &full_command,
+            &working_dir,
+            24,
+            80,
+            pty_tx,
+            #[cfg(windows)]
+            shell_config,
+        )?;
 
         if let Some(project) = state.active_project_mut() {
             project.dev_pty = Some(handle);
@@ -783,7 +811,20 @@ fn execute_command_in_shell(state: &mut AppState, pty_manager: &PtyManager) -> a
             let pty_id = format!("shell-{}", uuid::Uuid::new_v4());
             let pty_tx = state.pty_tx.clone();
 
-            match pty_manager.create_shell(&pty_id, &project_path, 24, 80, pty_tx) {
+            #[cfg(windows)]
+            let shell_config = state.config.settings.windows_shell;
+
+            let result = pty_manager.create_shell(
+                &pty_id,
+                &project_path,
+                24,
+                80,
+                pty_tx,
+                #[cfg(windows)]
+                shell_config,
+            );
+
+            match result {
                 Ok(handle) => {
                     if let Some(project) = state.active_project_mut() {
                         project.shell_pty = Some(handle);

@@ -66,12 +66,12 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                     .unwrap_or(false);
 
                 let (status_icon, status_style) = if is_suspended {
-                    ("⏸", Style::default().fg(theme.warning))
+                    ("⏸ ", Style::default().fg(theme.warning))
                 } else if is_running {
                     // 运行中时显示绿色圆点
-                    ("●", Style::default().fg(theme.success))
+                    ("● ", Style::default().fg(theme.success))
                 } else {
-                    ("", Style::default())
+                    (" ", Style::default())
                 };
 
                 // 资源信息的预估宽度（用于计算项目名称最大宽度）
@@ -153,6 +153,7 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                         spans.push(Span::styled(usage.format_cpu(), cpu_style));
                         spans.push(Span::styled("|", separator_style));
                         spans.push(Span::styled(usage.format_memory(), mem_style));
+                        spans.push(Span::styled(" ", separator_style));
                     }
                 }
 

@@ -9,6 +9,11 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+#[cfg(windows)]
+use crate::config::WindowsShell;
+#[cfg(windows)]
+use crate::platform::get_shell_with_config;
+
 /// PTY 管理器
 /// 负责创建 PTY 会话并管理其生命周期
 pub struct PtyManager {
@@ -23,6 +28,8 @@ impl PtyManager {
 
     /// 创建交互式 Shell PTY
     /// 使用 login shell 模式以加载完整的 shell 配置（如 starship）
+    /// shell_config: Windows 上的 Shell 类型配置
+    #[allow(unused_variables)]
     pub fn create_shell(
         &self,
         id: &str,
@@ -30,8 +37,12 @@ impl PtyManager {
         rows: u16,
         cols: u16,
         event_tx: mpsc::UnboundedSender<PtyEvent>,
+        #[cfg(windows)] shell_config: WindowsShell,
     ) -> anyhow::Result<PtyHandle> {
+        #[cfg(unix)]
         let shell = get_default_shell();
+        #[cfg(windows)]
+        let shell = get_shell_with_config(shell_config);
 
         // 使用 -l (login shell) 和 -i (interactive) 参数
         // 确保加载完整的 shell 配置（.zshrc, starship 等）
@@ -59,6 +70,8 @@ impl PtyManager {
     }
 
     /// 通过 Shell 执行命令字符串
+    /// shell_config: Windows 上的 Shell 类型配置
+    #[allow(unused_variables)]
     pub fn run_shell_command(
         &self,
         id: &str,
@@ -67,16 +80,24 @@ impl PtyManager {
         rows: u16,
         cols: u16,
         event_tx: mpsc::UnboundedSender<PtyEvent>,
+        #[cfg(windows)] shell_config: WindowsShell,
     ) -> anyhow::Result<PtyHandle> {
+        #[cfg(unix)]
         let shell = get_default_shell();
+        #[cfg(windows)]
+        let shell = get_shell_with_config(shell_config);
 
         #[cfg(unix)]
         let args = vec!["-c", command];
         #[cfg(windows)]
-        let args = if shell.contains("powershell") {
-            vec!["-Command", command]
-        } else {
-            vec!["/C", command]
+        let args = {
+            let shell_lower = shell.to_lowercase();
+            if shell_lower.contains("powershell") || shell_lower.contains("pwsh") {
+                vec!["-Command", command]
+            } else {
+                // cmd.exe
+                vec!["/C", command]
+            }
         };
 
         self.create_pty(id, &shell, &args, working_dir, rows, cols, event_tx)

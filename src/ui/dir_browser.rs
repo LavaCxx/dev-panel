@@ -122,21 +122,33 @@ pub fn draw_dir_browser(frame: &mut Frame, state: &AppState, theme: &Theme) {
 
     frame.render_stateful_widget(list, chunks[1], &mut list_state);
 
-    // 绘制帮助提示
-    let help_text = match state.language() {
-        crate::i18n::Language::English => {
-            " ↑↓: Navigate | Enter: Open | Backspace: Back | Space: Select | .: Hidden | Esc: Cancel"
-        }
-        crate::i18n::Language::Chinese => {
-            " ↑↓: 导航 | Enter: 进入 | Backspace: 返回 | Space: 选择 | .: 隐藏文件 | Esc: 取消"
-        }
+    // 绘制帮助提示（使用更明显的颜色）
+    let (keys, descriptions) = match state.language() {
+        crate::i18n::Language::English => (
+            vec!["↑↓", "Enter", "Backspace", "Space", ".", "Esc"],
+            vec!["Navigate", "Open", "Back", "Select", "Hidden", "Cancel"],
+        ),
+        crate::i18n::Language::Chinese => (
+            vec!["↑↓", "Enter", "Backspace", "Space", ".", "Esc"],
+            vec!["导航", "进入", "返回", "选择", "隐藏文件", "取消"],
+        ),
     };
 
-    let help = Paragraph::new(help_text).style(
-        Style::default()
-            .fg(theme.border)
-            .add_modifier(Modifier::DIM),
-    );
+    let key_style = Style::default().fg(theme.info);
+    let desc_style = Style::default().fg(theme.fg);
+    let sep_style = Style::default().fg(theme.border);
+
+    let mut help_spans = vec![Span::raw(" ")];
+    for (i, (key, desc)) in keys.iter().zip(descriptions.iter()).enumerate() {
+        if i > 0 {
+            help_spans.push(Span::styled(" | ", sep_style));
+        }
+        help_spans.push(Span::styled(*key, key_style));
+        help_spans.push(Span::styled(": ", sep_style));
+        help_spans.push(Span::styled(*desc, desc_style));
+    }
+
+    let help = Paragraph::new(Line::from(help_spans));
     frame.render_widget(help, chunks[2]);
 }
 

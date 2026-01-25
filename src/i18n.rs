@@ -130,6 +130,13 @@ impl I18n {
         }
     }
 
+    pub fn shell(&self) -> &'static str {
+        match self.lang {
+            Language::English => "Shell",
+            Language::Chinese => "终端",
+        }
+    }
+
     pub fn settings_hint(&self) -> &'static str {
         match self.lang {
             Language::English => "↑/↓: Navigate | Enter: Toggle | Esc: Close",

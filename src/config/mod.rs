@@ -10,6 +10,32 @@ use crate::i18n::Language;
 use crate::project::ProjectConfig;
 use serde::{Deserialize, Serialize};
 
+/// Windows Shell 选项
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub enum WindowsShell {
+    #[default]
+    PowerShell,
+    Cmd,
+}
+
+impl WindowsShell {
+    /// 切换到另一个 Shell
+    pub fn toggle(&self) -> Self {
+        match self {
+            WindowsShell::PowerShell => WindowsShell::Cmd,
+            WindowsShell::Cmd => WindowsShell::PowerShell,
+        }
+    }
+
+    /// 获取显示名称
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            WindowsShell::PowerShell => "PowerShell",
+            WindowsShell::Cmd => "CMD",
+        }
+    }
+}
+
 /// 应用设置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
@@ -20,6 +46,9 @@ pub struct AppSettings {
     /// 界面语言
     #[serde(default)]
     pub language: Language,
+    /// Windows Shell 选择（仅 Windows 有效）
+    #[serde(default)]
+    pub windows_shell: WindowsShell,
 }
 
 impl Default for AppSettings {
@@ -28,6 +57,7 @@ impl Default for AppSettings {
             theme: "catppuccin-mocha".to_string(),
             default_runner: "pnpm".to_string(),
             language: Language::default(),
+            windows_shell: WindowsShell::default(),
         }
     }
 }
