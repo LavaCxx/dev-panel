@@ -44,15 +44,15 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                 let is_selected = idx == state.active_project_idx;
                 let is_running = project.is_dev_running();
 
-                // 数字角标 (1-9 可快捷切换)，带空格分隔
+                // 数字角标 (1-9 可快捷切换)
                 let number_badge = if idx < 9 {
-                    format!("{}", idx + 1)
+                    format!("{} ", idx + 1)
                 } else {
                     "  ".to_string()
                 };
 
                 // 构建显示文本，箭头后带空格
-                let prefix = if is_selected { "▸ " } else { "  " };
+                let prefix = if is_selected { "▶ " } else { "  " };
                 
                 // 状态指示器：运行中 ●、暂停 ⏸、无 (空)
                 let is_suspended = project.dev_pty.as_ref().map(|p| p.suspended).unwrap_or(false);

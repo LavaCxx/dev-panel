@@ -43,7 +43,7 @@ impl I18n {
     pub fn app_title(&self) -> &'static str {
         match self.lang {
             Language::English => " DevPanel ",
-            Language::Chinese => " 开发面板 ",
+            Language::Chinese => " DevPanel ",
         }
     }
 
