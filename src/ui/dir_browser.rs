@@ -41,8 +41,11 @@ pub fn draw_dir_browser(frame: &mut Frame, state: &AppState, theme: &Theme) {
 
     // 绘制当前路径
     let path_text = format!(" {} {}", "📂", state.dir_browser.current_dir.display());
-    let path = Paragraph::new(path_text)
-        .style(Style::default().fg(theme.title).add_modifier(Modifier::BOLD));
+    let path = Paragraph::new(path_text).style(
+        Style::default()
+            .fg(theme.title)
+            .add_modifier(Modifier::BOLD),
+    );
     frame.render_widget(path, chunks[0]);
 
     // 构建目录列表

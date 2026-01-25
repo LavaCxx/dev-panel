@@ -45,8 +45,8 @@ impl FocusArea {
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum CommandTarget {
     #[default]
-    DevTerminal,    // 在 Dev Server 面板执行
-    ShellTerminal,  // 在 Interactive Shell 执行
+    DevTerminal, // 在 Dev Server 面板执行
+    ShellTerminal, // 在 Interactive Shell 执行
 }
 
 /// 应用模式枚举
@@ -57,8 +57,8 @@ pub enum AppMode {
     Normal,
     CommandPalette,
     AddCommand,
-    AddProject,        // 旧的手动输入模式（保留）
-    BrowseDirectory,   // 新的目录浏览器模式
+    AddProject,      // 旧的手动输入模式（保留）
+    BrowseDirectory, // 新的目录浏览器模式
     EditAlias,
     Help,
     Settings,
