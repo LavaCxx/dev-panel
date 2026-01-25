@@ -1,7 +1,7 @@
 # DevPanel
 
-[![CI](https://github.com/lavac/dev-panel/actions/workflows/ci.yml/badge.svg)](https://github.com/lavac/dev-panel/actions/workflows/ci.yml)
-[![Release](https://github.com/lavac/dev-panel/actions/workflows/release.yml/badge.svg)](https://github.com/lavac/dev-panel/actions/workflows/release.yml)
+[![CI](https://github.com/LavaCxx/dev-panel/actions/workflows/ci.yml/badge.svg)](https://github.com/LavaCxx/dev-panel/actions/workflows/ci.yml)
+[![Release](https://github.com/LavaCxx/dev-panel/actions/workflows/release.yml/badge.svg)](https://github.com/LavaCxx/dev-panel/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [中文文档](README_CN.md)
