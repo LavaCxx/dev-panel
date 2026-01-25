@@ -1,6 +1,8 @@
 //! 国际化模块
 //! 支持中英文切换
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 
 /// 语言枚举
