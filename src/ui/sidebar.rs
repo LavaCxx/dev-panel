@@ -63,10 +63,10 @@ pub fn draw_sidebar(frame: &mut Frame, area: Rect, state: &AppState, theme: &The
                     .unwrap_or(false);
 
                 let (status_icon, status_style) = if is_suspended {
-                    (" ⏸", Style::default().fg(theme.warning))
+                    ("⏸", Style::default().fg(theme.warning))
                 } else if is_running {
-                    // 运行中时显示 spinner 动画
-                    (state.spinner_frame(), Style::default().fg(theme.success))
+                    // 运行中时显示绿色圆点
+                    ("●", Style::default().fg(theme.success))
                 } else {
                     ("", Style::default())
                 };

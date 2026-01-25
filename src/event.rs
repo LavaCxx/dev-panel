@@ -6,7 +6,7 @@
 //! - Dev Server: 只显示命令输出，不需要焦点，r 运行命令，s 停止
 //! - Interactive Shell: 完全交互式，Enter 进入
 
-use crate::app::{AppMode, AppState, FocusArea};
+use crate::app::{AppMode, AppState, CommandTarget, FocusArea};
 use crate::project::Project;
 use crate::pty::PtyManager;
 use crossterm::event::{
@@ -253,7 +253,16 @@ fn handle_normal_mode(
         // r 打开命令面板（在 Dev Terminal 运行）
         KeyCode::Char('r') => {
             if state.active_project().is_some() {
-                state.enter_command_palette();
+                state.enter_command_palette(CommandTarget::DevTerminal);
+            } else {
+                let msg = state.i18n().no_project().to_string();
+                state.set_status(&msg);
+            }
+        }
+        // R (Shift+r) 打开命令面板（在 Interactive Shell 运行）
+        KeyCode::Char('R') => {
+            if state.active_project().is_some() {
+                state.enter_command_palette(CommandTarget::ShellTerminal);
             } else {
                 let msg = state.i18n().no_project().to_string();
                 state.set_status(&msg);
@@ -376,8 +385,15 @@ fn handle_command_palette_mode(
             state.command_palette_prev();
         }
         KeyCode::Enter => {
-            // 执行选中的命令（在 Dev Terminal）
-            execute_command_in_dev(state, pty_manager)?;
+            // 根据 command_target 决定执行位置
+            match state.command_target {
+                CommandTarget::DevTerminal => {
+                    execute_command_in_dev(state, pty_manager)?;
+                }
+                CommandTarget::ShellTerminal => {
+                    execute_command_in_shell(state, pty_manager)?;
+                }
+            }
             state.exit_mode();
         }
         _ => {}
@@ -716,6 +732,76 @@ fn execute_command_in_dev(state: &mut AppState, pty_manager: &PtyManager) -> any
             project.mark_dev_started();
         }
         state.set_status(&format!("Running: {}", cmd_name));
+    }
+    Ok(())
+}
+
+/// 在 Interactive Shell 执行命令
+fn execute_command_in_shell(state: &mut AppState, pty_manager: &PtyManager) -> anyhow::Result<()> {
+    use crate::project::{detect_package_manager, CommandType};
+
+    let command_idx = state.command_palette_idx;
+
+    // 获取命令信息
+    let command_info = {
+        if let Some(project) = state.active_project() {
+            let commands = project.get_all_commands();
+            commands.get(command_idx).map(|cmd| {
+                let working_dir = project.path.clone();
+                let full_command = match cmd.cmd_type {
+                    CommandType::NpmScript => {
+                        let pm = detect_package_manager(&working_dir);
+                        format!("{} {}", pm.run_prefix(), cmd.name)
+                    }
+                    CommandType::RawShell => cmd.command.clone(),
+                };
+                (working_dir, full_command, cmd.name.clone())
+            })
+        } else {
+            None
+        }
+    };
+
+    if let Some((project_path, full_command, cmd_name)) = command_info {
+        // 检查是否需要先启动 Shell
+        let needs_shell = {
+            if let Some(project) = state.active_project() {
+                project.shell_pty.is_none()
+            } else {
+                false
+            }
+        };
+
+        // 如果 Shell 不存在，先启动
+        if needs_shell {
+            let pty_id = format!("shell-{}", uuid::Uuid::new_v4());
+            let pty_tx = state.pty_tx.clone();
+
+            match pty_manager.create_shell(&pty_id, &project_path, 24, 80, pty_tx) {
+                Ok(handle) => {
+                    if let Some(project) = state.active_project_mut() {
+                        project.shell_pty = Some(handle);
+                    }
+                }
+                Err(e) => {
+                    state.set_status(&format!("Failed to start shell: {}", e));
+                    return Ok(());
+                }
+            }
+        }
+
+        // 向 Shell 发送命令（加上回车执行）
+        if let Some(project) = state.active_project_mut() {
+            if let Some(ref mut pty) = project.shell_pty {
+                // 发送命令文本 + 回车
+                let command_with_newline = format!("{}\r", full_command);
+                pty.send_input(command_with_newline.as_bytes())?;
+            }
+        }
+
+        // 切换焦点到 Shell Terminal
+        state.focus = FocusArea::ShellTerminal;
+        state.set_status(&format!("Shell: {}", cmd_name));
     }
     Ok(())
 }

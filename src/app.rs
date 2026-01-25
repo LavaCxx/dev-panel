@@ -41,6 +41,14 @@ impl FocusArea {
     }
 }
 
+/// 命令执行目标
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum CommandTarget {
+    #[default]
+    DevTerminal,    // 在 Dev Server 面板执行
+    ShellTerminal,  // 在 Interactive Shell 执行
+}
+
 /// 应用模式枚举
 /// 用于处理不同的交互模式（普通模式、弹窗模式等）
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -244,6 +252,8 @@ pub struct AppState {
     pub pty_tx: mpsc::UnboundedSender<PtyEvent>,
     /// 命令面板选中索引
     pub command_palette_idx: usize,
+    /// 命令执行目标（Dev Terminal 或 Shell Terminal）
+    pub command_target: CommandTarget,
     /// 设置页面选中索引
     pub settings_idx: usize,
     /// 输入缓冲区（用于各种输入场景）
@@ -275,6 +285,7 @@ impl AppState {
             pty_rx,
             pty_tx,
             command_palette_idx: 0,
+            command_target: CommandTarget::default(),
             settings_idx: 0,
             input_buffer: String::new(),
             status_message: None,
@@ -401,9 +412,10 @@ impl AppState {
     }
 
     /// 进入命令面板模式
-    pub fn enter_command_palette(&mut self) {
+    pub fn enter_command_palette(&mut self, target: CommandTarget) {
         self.mode = AppMode::CommandPalette;
         self.command_palette_idx = 0;
+        self.command_target = target;
     }
 
     /// 退出当前模式，返回普通模式
