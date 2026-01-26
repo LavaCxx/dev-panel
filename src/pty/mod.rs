@@ -339,6 +339,97 @@ impl PtyHandle {
             self.suspend()
         }
     }
+
+    /// 终止进程及其所有子进程
+    /// 在 Unix 上使用 SIGTERM/SIGKILL 发送给进程组
+    /// 在 Windows 上使用 TerminateProcess 终止进程树
+    pub fn kill(&mut self) {
+        if let Some(pid) = self.pid.take() {
+            log::info!("Killing PTY process tree: {}", pid);
+
+            #[cfg(unix)]
+            {
+                unsafe {
+                    // 如果进程被暂停，先恢复它（否则可能无法正常终止）
+                    if self.suspended {
+                        let pgid = libc::getpgid(pid as i32);
+                        let target_pid = if pgid > 0 { -pgid } else { -(pid as i32) };
+                        libc::kill(target_pid, libc::SIGCONT);
+                    }
+
+                    // 尝试获取进程组 ID
+                    let pgid = libc::getpgid(pid as i32);
+                    let target_pid = if pgid > 0 { -pgid } else { -(pid as i32) };
+
+                    // 先发送 SIGTERM 给进程组，给进程一个优雅退出的机会
+                    libc::kill(target_pid, libc::SIGTERM);
+
+                    // 给进程一点时间来响应 SIGTERM
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+
+                    // 发送 SIGKILL 确保进程被终止
+                    libc::kill(target_pid, libc::SIGKILL);
+
+                    // 同时直接向主进程发送信号，以防进程组信号不起作用
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
+            }
+
+            #[cfg(windows)]
+            {
+                use windows::Win32::Foundation::CloseHandle;
+                use windows::Win32::System::Threading::{
+                    OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+                    PROCESS_TERMINATE,
+                };
+
+                unsafe {
+                    // 获取整个进程树
+                    if let Ok(process_tree) = get_process_tree(pid) {
+                        // 收集所有需要等待的进程句柄
+                        let mut handles_to_wait = Vec::new();
+
+                        // 终止进程树中的所有进程
+                        for child_pid in process_tree {
+                            if let Ok(handle) = OpenProcess(
+                                PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
+                                false,
+                                child_pid,
+                            ) {
+                                let _ = TerminateProcess(handle, 1);
+                                handles_to_wait.push(handle);
+                            }
+                        }
+
+                        // 等待所有进程终止（最多 500ms）
+                        for handle in &handles_to_wait {
+                            let _ = WaitForSingleObject(*handle, 500);
+                        }
+
+                        // 关闭所有句柄
+                        for handle in handles_to_wait {
+                            let _ = CloseHandle(handle);
+                        }
+                    }
+
+                    // 额外等待一小段时间，确保系统资源完全释放
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+        }
+        self.running = false;
+        self.suspended = false;
+    }
+}
+
+/// Drop 实现：确保 PTY 进程在句柄销毁时被正确终止
+impl Drop for PtyHandle {
+    fn drop(&mut self) {
+        // 如果进程还在运行，终止它
+        if self.pid.is_some() {
+            self.kill();
+        }
+    }
 }
 
 /// PTY 事件

@@ -130,12 +130,22 @@ impl PtyManager {
         cmd.args(args);
         cmd.cwd(working_dir);
 
+        // Windows: 继承所有环境变量，避免 0xc0000142 错误
+        // 当调用 cmd.env() 时，portable-pty 会从"继承所有"模式切换到"只使用指定"模式
+        // 所以我们需要显式继承所有环境变量，然后再覆盖需要的
+        #[cfg(windows)]
+        {
+            // 先继承当前进程的所有环境变量
+            for (key, val) in std::env::vars() {
+                cmd.env(key, val);
+            }
+        }
+
         // 设置关键环境变量以支持彩色输出和 prompt 美化
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
 
-        // 继承重要的环境变量
-        // Unix 环境变量
+        // Unix: 继承重要的环境变量
         #[cfg(unix)]
         {
             for key in &[
@@ -153,36 +163,35 @@ impl PtyManager {
             }
         }
 
-        // Windows 环境变量 - PowerShell 需要这些才能正常启动
+        // 启动子进程（Windows 上添加重试逻辑）
         #[cfg(windows)]
-        {
-            for key in &[
-                "PATH",
-                "SYSTEMROOT",
-                "SYSTEMDRIVE",
-                "WINDIR",
-                "USERPROFILE",
-                "HOMEDRIVE",
-                "HOMEPATH",
-                "USERNAME",
-                "COMPUTERNAME",
-                "TEMP",
-                "TMP",
-                "APPDATA",
-                "LOCALAPPDATA",
-                "PROGRAMDATA",
-                "PROGRAMFILES",
-                "PROGRAMFILES(X86)",
-                "COMMONPROGRAMFILES",
-                "PSModulePath",
-            ] {
-                if let Ok(val) = std::env::var(key) {
-                    cmd.env(key, val);
+        let child = {
+            let mut last_error = None;
+            let mut child_result = None;
+
+            // 最多重试 3 次，每次间隔递增
+            for attempt in 0..3 {
+                match pair.slave.spawn_command(cmd.clone()) {
+                    Ok(c) => {
+                        child_result = Some(c);
+                        break;
+                    }
+                    Err(e) => {
+                        last_error = Some(e);
+                        // 等待一段时间再重试，让系统资源释放
+                        let delay = std::time::Duration::from_millis(100 * (attempt + 1) as u64);
+                        std::thread::sleep(delay);
+                    }
                 }
             }
-        }
 
-        // 启动子进程
+            match child_result {
+                Some(c) => c,
+                None => return Err(last_error.unwrap().into()),
+            }
+        };
+
+        #[cfg(unix)]
         let child = pair.slave.spawn_command(cmd)?;
 
         // 获取子进程 PID（用于后续发送信号）

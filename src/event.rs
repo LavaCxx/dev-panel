@@ -641,13 +641,15 @@ fn handle_settings_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<b
 /// 处理确认对话框模式
 fn handle_confirm_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<bool> {
     match key.code {
-        KeyCode::Char('y') | KeyCode::Char('Y') => {
+        // y/Y 或 Enter 确认删除
+        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
             let idx = state.active_project_idx;
             let msg = state.i18n().project_removed().to_string();
             state.remove_project(idx);
             state.set_status(&msg);
             state.exit_mode();
         }
+        // n/N 或 Esc 取消
         KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
             state.exit_mode();
         }

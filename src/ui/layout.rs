@@ -200,7 +200,8 @@ fn draw_status_bar(frame: &mut Frame, area: Rect, state: &AppState, theme: &Them
 /// 绘制确认对话框
 fn draw_confirm_popup(frame: &mut Frame, state: &AppState, message: &str, theme: &Theme) {
     let i18n = state.i18n();
-    let area = centered_rect(40, 7, frame.area());
+    // 使用固定尺寸而非百分比，确保弹窗大小足够显示内容
+    let area = centered_fixed_rect(40, 7, frame.area());
 
     // 清除背景
     frame.render_widget(Clear, area);
@@ -350,7 +351,7 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
     frame.render_widget(paragraph, inner);
 }
 
-/// 计算居中矩形
+/// 计算居中矩形（使用百分比）
 pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -369,4 +370,19 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+/// 计算居中矩形（使用固定尺寸）
+/// width: 弹窗宽度（字符数）
+/// height: 弹窗高度（行数）
+fn centered_fixed_rect(width: u16, height: u16, r: Rect) -> Rect {
+    // 确保弹窗不超过可用区域
+    let actual_width = width.min(r.width.saturating_sub(2));
+    let actual_height = height.min(r.height.saturating_sub(2));
+
+    // 计算居中位置
+    let x = r.x + (r.width.saturating_sub(actual_width)) / 2;
+    let y = r.y + (r.height.saturating_sub(actual_height)) / 2;
+
+    Rect::new(x, y, actual_width, actual_height)
 }
