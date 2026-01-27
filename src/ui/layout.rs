@@ -71,26 +71,28 @@ pub fn draw_ui(frame: &mut Frame, state: &AppState, theme: &Theme) {
         (i18n.dev_server().to_string(), 0)
     };
 
-    // 绘制 Dev Terminal
+    // 绘制 Dev Terminal（只读，不显示光标）
     draw_terminal_panel(
         frame,
         work_chunks[0],
         &dev_title,
         state.active_project().and_then(|p| p.dev_pty.as_ref()),
         state.focus == FocusArea::DevTerminal,
+        false, // Dev Terminal 是只读的，不显示光标
         dev_scroll_offset,
         &i18n,
         theme,
     );
 
-    // 绘制 Shell Terminal（Shell 不支持滚动）
+    // 绘制 Shell Terminal（交互式，聚焦时显示光标）
     draw_terminal_panel(
         frame,
         work_chunks[1],
         i18n.interactive_shell(),
         state.active_project().and_then(|p| p.shell_pty.as_ref()),
         state.focus == FocusArea::ShellTerminal,
-        0, // Shell 不滚动
+        true, // Shell Terminal 是交互式的，聚焦时显示光标
+        0,    // Shell 不滚动
         &i18n,
         theme,
     );

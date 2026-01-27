@@ -13,6 +13,7 @@ use ratatui::{
 };
 
 /// 绘制终端面板
+/// is_interactive: 是否是交互式终端（Shell），交互式终端在聚焦时显示光标
 #[allow(clippy::too_many_arguments)]
 pub fn draw_terminal_panel(
     frame: &mut Frame,
@@ -20,6 +21,7 @@ pub fn draw_terminal_panel(
     title: &str,
     pty: Option<&PtyHandle>,
     is_focused: bool,
+    is_interactive: bool,
     scroll_offset: usize,
     i18n: &I18n,
     theme: &Theme,
@@ -52,28 +54,42 @@ pub fn draw_terminal_panel(
             let screen_cols = screen.size().1 as usize;
             let visible_rows = inner.height as usize;
 
-            // 找到有内容的最后一行
-            let mut last_content_row = 0;
-            for row in 0..screen_rows {
-                for col in 0..screen_cols {
-                    if let Some(cell) = screen.cell(row as u16, col as u16) {
-                        if !cell.contents().is_empty() && cell.contents() != " " {
-                            last_content_row = row;
+            // 获取光标位置（用于交互式终端）
+            let (cursor_row, cursor_col) = screen.cursor_position();
+
+            // 计算起始行
+            let start_row = if is_interactive {
+                // 交互式终端：以光标位置为基准，确保光标始终可见
+                // 光标应该在可见区域内，通常在底部附近
+                if (cursor_row as usize) >= visible_rows {
+                    (cursor_row as usize) + 1 - visible_rows
+                } else {
+                    0
+                }
+            } else {
+                // 非交互式终端（Dev Server）：显示最后的内容
+                // 找到有内容的最后一行
+                let mut last_content_row = 0;
+                for row in 0..screen_rows {
+                    for col in 0..screen_cols {
+                        if let Some(cell) = screen.cell(row as u16, col as u16) {
+                            if !cell.contents().is_empty() && cell.contents() != " " {
+                                last_content_row = row;
+                            }
                         }
                     }
                 }
-            }
 
-            // 计算起始行（考虑滚动偏移）
-            // scroll_offset > 0 表示向上滚动查看更早的内容
-            let base_start = if last_content_row >= visible_rows {
-                last_content_row + 1 - visible_rows
-            } else {
-                0
+                // 计算起始行（考虑滚动偏移）
+                let base_start = if last_content_row >= visible_rows {
+                    last_content_row + 1 - visible_rows
+                } else {
+                    0
+                };
+
+                // 应用滚动偏移（向上滚动）
+                base_start.saturating_sub(scroll_offset)
             };
-
-            // 应用滚动偏移（向上滚动）
-            let start_row = base_start.saturating_sub(scroll_offset);
 
             for row in start_row..screen_rows.min(start_row + visible_rows) {
                 let mut spans: Vec<Span> = Vec::new();
@@ -127,6 +143,24 @@ pub fn draw_terminal_panel(
             } else {
                 let paragraph = Paragraph::new(lines);
                 frame.render_widget(paragraph, inner);
+            }
+
+            // 在聚焦状态下显示光标
+            // 只在交互式终端（Shell Terminal）聚焦时显示光标
+            if is_focused && is_interactive {
+                // 计算光标相对于可见区域的位置
+                let cursor_relative_row = (cursor_row as usize).saturating_sub(start_row);
+
+                // 光标应该始终在可见区域内（因为我们以光标为基准计算 start_row）
+                if cursor_relative_row < visible_rows {
+                    let cursor_x = inner.x.saturating_add(cursor_col);
+                    let cursor_y = inner.y.saturating_add(cursor_relative_row as u16);
+
+                    // 确保光标在内部区域内
+                    if cursor_x < inner.x + inner.width && cursor_y < inner.y + inner.height {
+                        frame.set_cursor_position((cursor_x, cursor_y));
+                    }
+                }
             }
         } else {
             // 无法获取锁，显示加载中
