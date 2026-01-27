@@ -137,18 +137,27 @@ pub fn draw_help_popup(frame: &mut Frame, state: &mut AppState, theme: &Theme) {
         }
     }
 
-    // 底部提示
-    lines.push(Line::from(""));
-    lines.push(Line::from(vec![Span::styled(
-        format!("  {}", close_hint),
-        Style::default()
-            .fg(theme.border)
-            .add_modifier(Modifier::DIM),
-    )]));
+    // 底部提示固定区域高度（1行提示 + 1行空行）
+    let hint_height = 2u16;
+
+    // 分割内容区域：上方为可滚动内容，下方为固定提示
+    let content_height = inner.height.saturating_sub(hint_height);
+    let content_area = ratatui::layout::Rect {
+        x: inner.x,
+        y: inner.y,
+        width: inner.width,
+        height: content_height,
+    };
+    let hint_area = ratatui::layout::Rect {
+        x: inner.x,
+        y: inner.y + content_height,
+        width: inner.width,
+        height: hint_height,
+    };
 
     // 计算滚动信息
     let total_lines = lines.len();
-    let visible_height = inner.height as usize;
+    let visible_height = content_area.height as usize;
     let max_scroll = total_lines.saturating_sub(visible_height);
 
     // 限制目标位置不超过最大滚动值（避免过度滚动）
@@ -157,11 +166,24 @@ pub fn draw_help_popup(frame: &mut Frame, state: &mut AppState, theme: &Theme) {
     // 使用平滑滚动的当前位置
     let scroll_offset = state.help_scroll.position();
 
-    // 渲染内容（带滚动）
+    // 渲染可滚动内容
     let paragraph = Paragraph::new(lines).scroll((scroll_offset as u16, 0));
-    frame.render_widget(paragraph, inner);
+    frame.render_widget(paragraph, content_area);
 
     // 绘制滚动条
     let scroll_info = ScrollInfo::new(total_lines, visible_height, scroll_offset);
-    draw_scrollbar(frame, inner, &scroll_info, theme);
+    draw_scrollbar(frame, content_area, &scroll_info, theme);
+
+    // 渲染固定在底部的关闭提示
+    let hint_lines = vec![
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            format!("  {}", close_hint),
+            Style::default()
+                .fg(theme.border)
+                .add_modifier(Modifier::DIM),
+        )]),
+    ];
+    let hint_paragraph = Paragraph::new(hint_lines);
+    frame.render_widget(hint_paragraph, hint_area);
 }

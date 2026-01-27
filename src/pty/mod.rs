@@ -12,10 +12,9 @@ mod resource;
 pub use bridge::*;
 pub use handle::*;
 pub use manager::*;
+// ProcessResourceUsage 通过 PtyHandle.resource_usage 字段对外可用
+#[allow(unused_imports)]
 pub use resource::*;
-
-// 内部使用
-pub(crate) use process_tree::*;
 
 /// PTY 事件
 /// 用于在异步任务和主线程之间传递 PTY 相关事件
