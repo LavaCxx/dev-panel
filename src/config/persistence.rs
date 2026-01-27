@@ -2,10 +2,13 @@
 //! 负责配置文件的读写
 
 use super::AppConfig;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// 配置文件夹名称（位于用户主目录下）
+pub const CONFIG_DIR_NAME: &str = ".devpanel";
 
 /// 默认配置文件名
-pub const CONFIG_FILE_NAME: &str = "devpanel.json";
+pub const CONFIG_FILE_NAME: &str = "config.json";
 
 /// 从文件加载配置
 pub fn load_config(path: &Path) -> anyhow::Result<AppConfig> {
@@ -20,17 +23,42 @@ pub fn load_config(path: &Path) -> anyhow::Result<AppConfig> {
 }
 
 /// 保存配置到文件
+/// 自动创建父目录（如果不存在）
 pub fn save_config(config: &AppConfig, path: &Path) -> anyhow::Result<()> {
+    // 确保配置目录存在
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+
     let content = serde_json::to_string_pretty(config)?;
     std::fs::write(path, content)?;
     Ok(())
 }
 
-/// 获取当前工作目录下的配置文件路径
-pub fn get_config_path() -> std::path::PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."))
-        .join(CONFIG_FILE_NAME)
+/// 获取配置文件目录路径
+/// 返回 ~/.devpanel/
+pub fn get_config_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(CONFIG_DIR_NAME)
+}
+
+/// 获取配置文件路径
+/// 返回 ~/.devpanel/config.json
+pub fn get_config_path() -> PathBuf {
+    get_config_dir().join(CONFIG_FILE_NAME)
+}
+
+/// 确保配置目录存在
+/// 如果不存在则创建
+pub fn ensure_config_dir() -> anyhow::Result<PathBuf> {
+    let config_dir = get_config_dir();
+    if !config_dir.exists() {
+        std::fs::create_dir_all(&config_dir)?;
+    }
+    Ok(config_dir)
 }
 
 #[cfg(test)]

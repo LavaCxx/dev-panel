@@ -62,7 +62,7 @@ impl Default for AppSettings {
     }
 }
 
-/// 应用配置（持久化到 devpanel.json）
+/// 应用配置（持久化到 ~/.devpanel/config.json）
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     /// 项目配置列表
