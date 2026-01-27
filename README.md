@@ -74,31 +74,51 @@ cargo build --release
 | `Tab` / `Shift+Tab` | Switch projects |
 | `j` / `k` / `↑` / `↓` | Navigate projects |
 | `Enter` | Enter Interactive Shell |
-| `r` | Open command palette |
-| `a` | Add new project |
+| `r` | Open command palette (run in Dev Terminal) |
+| `R` | Open command palette (run in Shell) |
+| `a` | Add new project (directory browser) |
 | `e` | Edit project alias |
 | `c` | Add custom command |
 | `d` | Delete project |
+| `z` | Toggle panel layout (Split/Dev Max/Shell Max) |
 | `,` | Open settings |
 | `q` / `Ctrl+C` | Quit |
 | `?` | Show help |
 
-**Dev Terminal (Output Only)**
+**Dev Server**
 | Key | Action |
 |-----|--------|
-| `x` | Send interrupt signal |
-| `p` | Pause/Resume process (freeze) |
-| `r` | Run new command (replaces current) |
+| `r` | Run command (opens palette) |
 | `s` | Stop Dev Server |
-| Mouse click | Focus and enable scroll |
-| `j/k/↑/↓` | Scroll through log history |
-| `Esc` | Return to sidebar |
+| `x` | Send interrupt (Ctrl+C) |
+| `p` | Pause/Resume (freeze process) |
+
+**Dev Log View (click Dev panel to focus)**
+| Key | Action |
+|-----|--------|
+| `j` / `k` / `↑` / `↓` | Scroll log |
+| `PgUp` / `PgDn` | Fast scroll |
+| `Home` | Jump to latest |
+| `z` | Toggle panel layout |
+| `Esc` | Exit log view |
 
 **Interactive Shell (Full Interactive)**
 | Key | Action |
 |-----|--------|
+| `R` | Run command in shell (from sidebar) |
 | All keys | Sent directly to shell |
 | `Esc` | Return to sidebar (keeps shell running) |
+
+**Directory Browser (when adding project)**
+| Key | Action |
+|-----|--------|
+| `j` / `k` / `↑` / `↓` | Navigate directories |
+| `Enter` | Enter directory |
+| `Backspace` | Go to parent directory |
+| `Space` | Select directory as project |
+| `.` | Toggle hidden files |
+| `~` | Jump to home directory |
+| `Esc` | Cancel |
 
 ### Mouse Operations
 
@@ -175,25 +195,53 @@ Config file `devpanel.json` is saved in the current working directory:
 ```
 devpanel/
 ├── src/
-│   ├── main.rs           # Entry point, async main loop
-│   ├── app.rs            # AppState global state management
-│   ├── event.rs          # Event handling and shortcuts
-│   ├── i18n.rs           # Internationalization
-│   ├── ui/               # UI components
-│   │   ├── layout.rs     # Main layout
-│   │   ├── sidebar.rs    # Project list
-│   │   ├── terminal.rs   # Terminal panel
+│   ├── main.rs              # Entry point, async main loop
+│   ├── i18n.rs              # Internationalization
+│   ├── app/                 # Application state
+│   │   ├── mod.rs           # AppState core
+│   │   ├── types.rs         # Enums (FocusArea, AppMode, etc.)
+│   │   ├── scroll.rs        # Smooth scrolling
+│   │   ├── status.rs        # Status messages
+│   │   └── dir_browser.rs   # Directory browser state
+│   ├── event/               # Event handling
+│   │   ├── mod.rs           # Event dispatcher
+│   │   ├── keyboard.rs      # Keyboard event handlers
+│   │   ├── mouse.rs         # Mouse event handlers
+│   │   ├── command.rs       # Command execution
+│   │   └── helpers.rs       # Helper functions
+│   ├── ui/                  # UI components
+│   │   ├── mod.rs           # UI module exports
+│   │   ├── layout.rs        # Main layout
+│   │   ├── sidebar.rs       # Project list
+│   │   ├── terminal.rs      # Terminal panel
+│   │   ├── help_popup.rs    # Help dialog
+│   │   ├── status_bar.rs    # Status bar
+│   │   ├── confirm_popup.rs # Confirmation dialogs
+│   │   ├── title_bar.rs     # Title bar
+│   │   ├── dir_browser.rs   # Directory browser UI
 │   │   ├── settings_popup.rs
 │   │   ├── command_palette.rs
-│   │   └── theme.rs      # Catppuccin theme
-│   ├── pty/              # PTY management
-│   │   ├── manager.rs    # PTY lifecycle
-│   │   └── bridge.rs     # PTY-UI bridge
-│   ├── project/          # Project management
-│   │   ├── package.rs    # package.json parsing
-│   │   └── scanner.rs    # Project scanning
-│   ├── config/           # Configuration persistence
-│   └── platform/         # Cross-platform utilities
+│   │   ├── input_popup.rs
+│   │   ├── scrollbar.rs
+│   │   ├── spinner.rs
+│   │   └── theme.rs         # Catppuccin theme
+│   ├── pty/                 # PTY management
+│   │   ├── mod.rs           # PTY module exports
+│   │   ├── manager.rs       # PTY lifecycle
+│   │   ├── bridge.rs        # PTY-UI bridge
+│   │   ├── handle.rs        # PTY handle and controls
+│   │   ├── resource.rs      # Resource usage tracking
+│   │   └── process_tree.rs  # Process tree utilities
+│   ├── project/             # Project management
+│   │   ├── mod.rs           # Project types
+│   │   ├── package.rs       # package.json parsing
+│   │   └── scanner.rs       # Project scanning
+│   ├── config/              # Configuration persistence
+│   │   ├── mod.rs
+│   │   └── persistence.rs
+│   └── platform/            # Cross-platform utilities
+│       ├── mod.rs
+│       └── shell.rs
 └── Cargo.toml
 ```
 

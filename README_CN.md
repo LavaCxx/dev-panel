@@ -72,33 +72,53 @@ cargo build --release
 |------|------|
 | `1-9` | 快速切换到对应项目 |
 | `Tab` / `Shift+Tab` | 切换项目 |
-| `j` / `k` / `↑` / `↓` | 切换项目 |
-| `Enter` | 进入 Interactive Shell |
-| `r` | 打开命令面板 |
-| `a` | 添加新项目 |
+| `j` / `k` / `↑` / `↓` | 上下导航 |
+| `Enter` | 进入交互终端 |
+| `r` | 打开命令面板（在 Dev Terminal 运行） |
+| `R` | 打开命令面板（在 Shell 运行） |
+| `a` | 添加新项目（目录浏览器） |
 | `e` | 编辑项目别名 |
 | `c` | 添加自定义命令 |
 | `d` | 删除项目 |
+| `z` | 切换面板布局（平分/Dev 最大化/Shell 最大化） |
 | `,` | 打开设置 |
 | `q` / `Ctrl+C` | 退出程序 |
 | `?` | 显示帮助 |
 
-**Dev Terminal（只显示输出）**
+**开发服务**
 | 按键 | 功能 |
 |------|------|
-| `x` | 发送中断信号给进程 |
-| `p` | 暂停/恢复进程（冻结） |
-| `r` | 运行新命令（覆盖当前） |
-| `s` | 停止 Dev Server |
-| 鼠标点击 | 聚焦并可滚动查看 log |
-| `j/k/↑/↓` | 滚动查看历史 log |
-| `Esc` | 返回侧边栏 |
+| `r` | 运行命令 |
+| `s` | 停止服务 |
+| `x` | 发送中断 (Ctrl+C) |
+| `p` | 暂停/恢复（冻结进程） |
 
-**Interactive Shell（完全交互）**
+**日志查看（点击 Dev 面板聚焦）**
 | 按键 | 功能 |
 |------|------|
-| 所有按键 | 直接发送给 Shell |
-| `Esc` | 返回侧边栏（不关闭 Shell） |
+| `j` / `k` / `↑` / `↓` | 滚动日志 |
+| `PgUp` / `PgDn` | 快速滚动 |
+| `Home` | 跳到最新 |
+| `z` | 切换面板布局 |
+| `Esc` | 退出查看 |
+
+**交互终端（完全交互）**
+| 按键 | 功能 |
+|------|------|
+| `R` | 在终端运行命令（从侧边栏） |
+| 所有按键 | 直接发送给终端 |
+| `Esc` | 返回侧边栏（不关闭终端） |
+
+**目录浏览器（添加项目时）**
+| 按键 | 功能 |
+|------|------|
+| `j` / `k` / `↑` / `↓` | 上下导航 |
+| `Enter` | 进入目录 |
+| `Backspace` | 返回上级目录 |
+| `Space` | 选择目录作为项目 |
+| `.` | 切换隐藏文件显示 |
+| `~` | 跳转到主目录 |
+| `Esc` | 取消 |
 
 ### 鼠标操作
 
@@ -175,25 +195,53 @@ cargo build --release
 ```
 devpanel/
 ├── src/
-│   ├── main.rs           # 入口点，异步主循环
-│   ├── app.rs            # AppState 全局状态管理
-│   ├── event.rs          # 事件处理和快捷键
-│   ├── i18n.rs           # 国际化支持
-│   ├── ui/               # UI 组件
-│   │   ├── layout.rs     # 主布局
-│   │   ├── sidebar.rs    # 项目列表
-│   │   ├── terminal.rs   # 终端面板
+│   ├── main.rs              # 入口点，异步主循环
+│   ├── i18n.rs              # 国际化支持
+│   ├── app/                 # 应用状态
+│   │   ├── mod.rs           # AppState 核心
+│   │   ├── types.rs         # 枚举定义 (FocusArea, AppMode 等)
+│   │   ├── scroll.rs        # 平滑滚动
+│   │   ├── status.rs        # 状态消息
+│   │   └── dir_browser.rs   # 目录浏览器状态
+│   ├── event/               # 事件处理
+│   │   ├── mod.rs           # 事件分发
+│   │   ├── keyboard.rs      # 键盘事件处理
+│   │   ├── mouse.rs         # 鼠标事件处理
+│   │   ├── command.rs       # 命令执行
+│   │   └── helpers.rs       # 辅助函数
+│   ├── ui/                  # UI 组件
+│   │   ├── mod.rs           # UI 模块导出
+│   │   ├── layout.rs        # 主布局
+│   │   ├── sidebar.rs       # 项目列表
+│   │   ├── terminal.rs      # 终端面板
+│   │   ├── help_popup.rs    # 帮助弹窗
+│   │   ├── status_bar.rs    # 状态栏
+│   │   ├── confirm_popup.rs # 确认对话框
+│   │   ├── title_bar.rs     # 标题栏
+│   │   ├── dir_browser.rs   # 目录浏览器 UI
 │   │   ├── settings_popup.rs
 │   │   ├── command_palette.rs
-│   │   └── theme.rs      # Catppuccin 主题
-│   ├── pty/              # PTY 管理
-│   │   ├── manager.rs    # PTY 生命周期
-│   │   └── bridge.rs     # PTY-UI 桥接
-│   ├── project/          # 项目管理
-│   │   ├── package.rs    # package.json 解析
-│   │   └── scanner.rs    # 项目扫描
-│   ├── config/           # 配置持久化
-│   └── platform/         # 跨平台工具
+│   │   ├── input_popup.rs
+│   │   ├── scrollbar.rs
+│   │   ├── spinner.rs
+│   │   └── theme.rs         # Catppuccin 主题
+│   ├── pty/                 # PTY 管理
+│   │   ├── mod.rs           # PTY 模块导出
+│   │   ├── manager.rs       # PTY 生命周期
+│   │   ├── bridge.rs        # PTY-UI 桥接
+│   │   ├── handle.rs        # PTY 句柄和控制
+│   │   ├── resource.rs      # 资源使用追踪
+│   │   └── process_tree.rs  # 进程树工具
+│   ├── project/             # 项目管理
+│   │   ├── mod.rs           # 项目类型定义
+│   │   ├── package.rs       # package.json 解析
+│   │   └── scanner.rs       # 项目扫描
+│   ├── config/              # 配置持久化
+│   │   ├── mod.rs
+│   │   └── persistence.rs
+│   └── platform/            # 跨平台工具
+│       ├── mod.rs
+│       └── shell.rs
 └── Cargo.toml
 ```
 
