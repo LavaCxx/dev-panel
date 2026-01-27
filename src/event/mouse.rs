@@ -112,14 +112,27 @@ fn handle_popup_mouse_event(
             }
         }
         // 弹窗内鼠标滚轮支持
+        // macOS 和 Windows 对内容滚动的期望不同：
+        // - macOS（自然滚动）：ScrollUp → 内容向上移动（看到更下面的内容）
+        // - Windows（传统滚轮）：ScrollUp → 内容向下移动（看到更上面的内容）
+        // 但目录浏览器的"选中条移动"在两边都是 ScrollUp → 选中条向上
         MouseEventKind::ScrollUp => match state.mode {
             AppMode::Help => {
-                // 使用平滑滚动：向上滚动（内容向下移动，offset 增加）
-                state.help_scroll.scroll_by(MOUSE_SCROLL_STEP as f32);
+                // 内容滚动：根据平台区分方向
+                #[cfg(target_os = "macos")]
+                {
+                    // macOS：内容向上滚动（显示更下面的内容）
+                    state.help_scroll.scroll_by(MOUSE_SCROLL_STEP as f32);
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    // Windows/Linux：内容向下滚动（显示更上面的内容）
+                    state.help_scroll.scroll_by(-(MOUSE_SCROLL_STEP as f32));
+                }
                 return Ok(true);
             }
             AppMode::BrowseDirectory => {
-                // 目录浏览器向上滚动（由 dir_browser 内部处理）
+                // 目录浏览器：选中条向上移动（两平台一致）
                 state.dir_browser.scroll_up(3);
                 return Ok(true);
             }
@@ -132,12 +145,21 @@ fn handle_popup_mouse_event(
         },
         MouseEventKind::ScrollDown => match state.mode {
             AppMode::Help => {
-                // 使用平滑滚动：向下滚动（内容向上移动，offset 减少）
-                state.help_scroll.scroll_by(-(MOUSE_SCROLL_STEP as f32));
+                // 内容滚动：根据平台区分方向
+                #[cfg(target_os = "macos")]
+                {
+                    // macOS：内容向下滚动（显示更上面的内容）
+                    state.help_scroll.scroll_by(-(MOUSE_SCROLL_STEP as f32));
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    // Windows/Linux：内容向上滚动（显示更下面的内容）
+                    state.help_scroll.scroll_by(MOUSE_SCROLL_STEP as f32);
+                }
                 return Ok(true);
             }
             AppMode::BrowseDirectory => {
-                // 目录浏览器向下滚动
+                // 目录浏览器：选中条向下移动（两平台一致）
                 state.dir_browser.scroll_down(3);
                 return Ok(true);
             }
