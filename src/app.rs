@@ -11,6 +11,92 @@ use crate::ui::Spinner;
 use std::time::Instant;
 use tokio::sync::mpsc;
 
+/// 平滑滚动状态
+/// 通过缓动插值实现流畅的滚动动画效果
+#[derive(Debug, Clone)]
+pub struct SmoothScroll {
+    /// 目标滚动位置
+    target: f32,
+    /// 当前滚动位置（用于渲染）
+    current: f32,
+    /// 缓动系数（0.0-1.0，越大越快收敛）
+    easing: f32,
+}
+
+impl Default for SmoothScroll {
+    fn default() -> Self {
+        Self {
+            target: 0.0,
+            current: 0.0,
+            easing: 0.75, // 每帧移动 45% 的距离差，轻快响应
+        }
+    }
+}
+
+impl SmoothScroll {
+    /// 创建新的平滑滚动状态
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 设置目标位置（绝对值）
+    pub fn set_target(&mut self, target: f32) {
+        self.target = target.max(0.0);
+    }
+
+    /// 增量滚动
+    pub fn scroll_by(&mut self, delta: f32) {
+        self.target = (self.target + delta).max(0.0);
+    }
+
+    /// 限制目标位置不超过最大值
+    pub fn clamp_target(&mut self, max: f32) {
+        if self.target > max {
+            self.target = max;
+        }
+        if self.current > max {
+            self.current = max;
+        }
+    }
+
+    /// 更新当前位置（每帧调用）
+    /// 返回是否仍在动画中
+    pub fn update(&mut self) -> bool {
+        let diff = self.target - self.current;
+        if diff.abs() < 0.5 {
+            // 足够接近，直接到达目标
+            self.current = self.target;
+            false
+        } else {
+            // 缓动插值：每帧移动一定比例的距离差
+            self.current += diff * self.easing;
+            true
+        }
+    }
+
+    /// 获取当前渲染位置（四舍五入到整数）
+    pub fn position(&self) -> usize {
+        self.current.round().max(0.0) as usize
+    }
+
+    /// 是否正在动画中
+    pub fn is_animating(&self) -> bool {
+        (self.target - self.current).abs() > 0.5
+    }
+
+    /// 重置滚动状态
+    pub fn reset(&mut self) {
+        self.target = 0.0;
+        self.current = 0.0;
+    }
+
+    /// 立即跳转到目标位置（无动画）
+    pub fn jump_to(&mut self, position: f32) {
+        self.target = position.max(0.0);
+        self.current = self.target;
+    }
+}
+
 /// 焦点区域枚举
 /// 用于追踪当前用户焦点所在的 UI 区域
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -167,6 +253,70 @@ impl DirectoryBrowser {
         browser
     }
 
+    /// 创建目录浏览器，从指定目录开始
+    /// 在 Windows 上，如果提供了上次的目录，会使用其盘符根目录作为起始位置
+    pub fn with_initial_dir(last_dir: Option<&str>) -> Self {
+        let start_dir = if let Some(dir) = last_dir {
+            let path = std::path::PathBuf::from(dir);
+
+            #[cfg(windows)]
+            {
+                // Windows: 提取盘符根目录（如 "C:\" 或 "D:\"）
+                if let Some(prefix) = path.components().next() {
+                    use std::path::Component;
+                    if let Component::Prefix(p) = prefix {
+                        let drive_root = std::path::PathBuf::from(format!(
+                            "{}\\",
+                            p.as_os_str().to_string_lossy()
+                        ));
+                        if drive_root.exists() {
+                            drive_root
+                        } else {
+                            dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("C:\\"))
+                        }
+                    } else {
+                        dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("C:\\"))
+                    }
+                } else {
+                    dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("C:\\"))
+                }
+            }
+
+            #[cfg(not(windows))]
+            {
+                // 非 Windows: 如果路径存在，使用该路径的父目录；否则使用主目录
+                if path.exists() {
+                    path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| {
+                        dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"))
+                    })
+                } else {
+                    dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"))
+                }
+            }
+        } else {
+            dirs::home_dir().unwrap_or_else(|| {
+                #[cfg(windows)]
+                {
+                    std::path::PathBuf::from("C:\\")
+                }
+                #[cfg(not(windows))]
+                {
+                    std::path::PathBuf::from("/")
+                }
+            })
+        };
+
+        let mut browser = Self {
+            current_dir: start_dir,
+            entries: Vec::new(),
+            selected_idx: 0,
+            show_hidden: false,
+            in_drive_selection: false,
+        };
+        browser.refresh();
+        browser
+    }
+
     /// 刷新当前目录的内容
     pub fn refresh(&mut self) {
         self.entries.clear();
@@ -207,6 +357,29 @@ impl DirectoryBrowser {
 
             // 按名称排序
             entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+            // 在顶部添加返回上级目录的选项（如果有上级目录）
+            let has_parent = self.current_dir.parent().is_some();
+            #[cfg(windows)]
+            let has_parent = has_parent || self.is_at_drive_root(); // Windows 驱动器根目录可以返回驱动器选择
+
+            if has_parent {
+                let parent_path = self
+                    .current_dir
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| self.current_dir.clone());
+                entries.insert(
+                    0,
+                    DirEntry {
+                        name: "..".to_string(),
+                        path: parent_path,
+                        is_dir: true,
+                        has_package_json: false,
+                    },
+                );
+            }
+
             self.entries = entries;
         }
     }
@@ -248,9 +421,14 @@ impl DirectoryBrowser {
     pub fn enter_selected(&mut self) {
         if let Some(entry) = self.entries.get(self.selected_idx) {
             if entry.is_dir {
-                self.current_dir = entry.path.clone();
-                self.in_drive_selection = false;
-                self.refresh();
+                // 特殊处理 ".." 返回上级目录
+                if entry.name == ".." {
+                    self.go_up();
+                } else {
+                    self.current_dir = entry.path.clone();
+                    self.in_drive_selection = false;
+                    self.refresh();
+                }
             }
         }
     }
@@ -291,6 +469,21 @@ impl DirectoryBrowser {
             } else {
                 self.selected_idx -= 1;
             }
+        }
+    }
+
+    /// 向上滚动多行（用于鼠标滚轮）
+    pub fn scroll_up(&mut self, lines: usize) {
+        if !self.entries.is_empty() {
+            self.selected_idx = self.selected_idx.saturating_sub(lines);
+        }
+    }
+
+    /// 向下滚动多行（用于鼠标滚轮）
+    pub fn scroll_down(&mut self, lines: usize) {
+        if !self.entries.is_empty() {
+            let max_idx = self.entries.len().saturating_sub(1);
+            self.selected_idx = (self.selected_idx + lines).min(max_idx);
         }
     }
 
@@ -354,8 +547,8 @@ pub struct AppState {
     resource_update_frame: u64,
     /// 右侧面板布局模式
     pub panel_layout: PanelLayout,
-    /// 帮助弹窗滚动偏移量
-    pub help_scroll_offset: u16,
+    /// 帮助弹窗平滑滚动状态
+    pub help_scroll: SmoothScroll,
 }
 
 impl AppState {
@@ -390,18 +583,21 @@ impl AppState {
             },
             resource_update_frame: 0,
             panel_layout: PanelLayout::default(),
-            help_scroll_offset: 0,
+            help_scroll: SmoothScroll::new(),
         }
     }
 
     /// 进入目录浏览模式
+    /// 使用配置中保存的上次浏览目录作为起始位置（Windows 会使用盘符根目录）
     pub fn enter_browse_mode(&mut self) {
-        self.dir_browser = DirectoryBrowser::new();
+        let last_dir = self.config.settings.last_browse_dir.as_deref();
+        self.dir_browser = DirectoryBrowser::with_initial_dir(last_dir);
         self.mode = AppMode::BrowseDirectory;
     }
 
     /// 增加帧计数（每帧调用）
-    pub fn tick(&mut self) {
+    /// 返回是否有动画正在进行（用于决定是否需要持续重绘）
+    pub fn tick(&mut self) -> bool {
         self.frame_count = self.frame_count.wrapping_add(1);
 
         // 自动清除过期的状态消息
@@ -417,6 +613,9 @@ impl AppState {
             self.update_resource_usage();
             self.resource_update_frame = self.frame_count;
         }
+
+        // 更新平滑滚动动画并返回是否仍在进行
+        self.help_scroll.update()
     }
 
     /// 更新所有运行中进程的资源使用信息

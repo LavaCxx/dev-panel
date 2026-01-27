@@ -52,6 +52,9 @@ pub struct AppSettings {
     /// 是否已显示过首次启动设置引导
     #[serde(default)]
     pub first_run_shown: bool,
+    /// 最后一次浏览的目录（用于记住 Windows 盘符）
+    #[serde(default)]
+    pub last_browse_dir: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -62,6 +65,7 @@ impl Default for AppSettings {
             language: Language::default(),
             windows_shell: WindowsShell::default(),
             first_run_shown: false,
+            last_browse_dir: None,
         }
     }
 }

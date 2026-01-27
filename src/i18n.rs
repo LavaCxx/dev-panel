@@ -233,8 +233,8 @@ impl I18n {
 
     pub fn yes_no(&self) -> &'static str {
         match self.lang {
-            Language::English => "[y] Yes  [n] No",
-            Language::Chinese => "[y] 是  [n] 否",
+            Language::English => "[Enter] Confirm  [Esc] Cancel",
+            Language::Chinese => "[Enter] 确认  [Esc] 取消",
         }
     }
 

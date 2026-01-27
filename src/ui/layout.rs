@@ -15,14 +15,19 @@ use ratatui::{
 };
 
 /// 绘制主界面
-pub fn draw_ui(frame: &mut Frame, state: &AppState, theme: &Theme) {
+pub fn draw_ui(frame: &mut Frame, state: &mut AppState, theme: &Theme) {
+    let screen_width = frame.area().width as usize;
+
+    // 计算状态栏需要的高度（根据内容和屏幕宽度）
+    let status_height = calculate_status_bar_height(state, screen_width);
+
     // 主布局：顶部标题 + 中间内容 + 底部状态栏
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // 标题栏
-            Constraint::Min(1),    // 主内容区
-            Constraint::Length(1), // 状态栏
+            Constraint::Length(1),             // 标题栏
+            Constraint::Min(1),                // 主内容区
+            Constraint::Length(status_height), // 状态栏（动态高度）
         ])
         .split(frame.area());
 
@@ -165,44 +170,157 @@ fn draw_title_bar(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme
     frame.render_widget(title, area);
 }
 
+/// 获取状态栏帮助项（用于计算高度和渲染）
+fn get_status_help_items(state: &AppState) -> Vec<(&'static str, &'static str)> {
+    match state.focus {
+        FocusArea::Sidebar | FocusArea::DevTerminal => match state.language() {
+            crate::i18n::Language::English => vec![
+                ("Tab", "Project"),
+                ("Enter", "Shell"),
+                ("r/R", "Run"),
+                ("s", "Stop"),
+                ("z", "Layout"),
+                ("?", "Help"),
+            ],
+            crate::i18n::Language::Chinese => vec![
+                ("Tab", "切换项目"),
+                ("Enter", "终端"),
+                ("r/R", "运行"),
+                ("s", "停止"),
+                ("z", "布局"),
+                ("?", "帮助"),
+            ],
+        },
+        FocusArea::ShellTerminal => match state.language() {
+            crate::i18n::Language::English => vec![("Esc", "Back")],
+            crate::i18n::Language::Chinese => vec![("Esc", "返回")],
+        },
+    }
+}
+
+/// 计算状态栏需要的高度
+fn calculate_status_bar_height(state: &AppState, screen_width: usize) -> u16 {
+    // 如果有状态消息，只需要1行
+    if state.status_message.is_some() {
+        return 1;
+    }
+
+    let items = get_status_help_items(state);
+    let lines = build_status_help_lines(&items, screen_width);
+    (lines.len() as u16).clamp(1, 3) // 最少1行，最多3行
+}
+
+/// 根据可用宽度构建状态栏帮助提示行（自动换行）
+fn build_status_help_lines<'a>(
+    items: &[(&'a str, &'a str)],
+    available_width: usize,
+) -> Vec<Vec<(&'a str, &'a str)>> {
+    let mut lines: Vec<Vec<(&'a str, &'a str)>> = Vec::new();
+    let mut current_line: Vec<(&'a str, &'a str)> = Vec::new();
+    let mut current_width: usize = 1; // 起始空格
+
+    for (key, desc) in items.iter() {
+        // 计算这个条目的宽度（包括分隔符）
+        let separator_width = if current_line.is_empty() { 0 } else { 3 }; // " | "
+        let key_width = key.chars().count();
+        let desc_width = desc
+            .chars()
+            .map(|c| if c.is_ascii() { 1 } else { 2 })
+            .sum::<usize>();
+        let item_width = separator_width + key_width + 2 + desc_width; // key + ": " + desc
+
+        // 检查是否需要换行
+        if current_width + item_width > available_width && !current_line.is_empty() {
+            lines.push(std::mem::take(&mut current_line));
+            current_width = 1;
+        }
+
+        current_line.push((key, desc));
+        current_width += item_width;
+    }
+
+    // 添加最后一行
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+
+    if lines.is_empty() {
+        lines.push(Vec::new());
+    }
+
+    lines
+}
+
 /// 绘制状态栏
 fn draw_status_bar(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
-    let i18n = state.i18n();
-
     // 检查是否有状态消息
-    let (status_text, is_message) = if let Some(ref msg) = state.status_message {
-        (msg.text.clone(), true)
-    } else {
-        // 根据焦点区域显示不同的快捷键提示
-        let hint = match state.focus {
-            FocusArea::Sidebar | FocusArea::DevTerminal => i18n.status_hint_sidebar().to_string(),
-            FocusArea::ShellTerminal => i18n.status_hint_shell().to_string(),
+    if let Some(ref msg) = state.status_message {
+        // 计算状态消息的颜色（支持淡出效果）
+        let fg_color = {
+            let opacity = state.status_opacity();
+            if opacity > 0.5 {
+                theme.success // 高亮显示
+            } else {
+                theme.border // 淡出时变暗
+            }
         };
-        (hint, false)
-    };
 
-    // 计算状态消息的颜色（支持淡出效果）
-    let fg_color = if is_message {
-        let opacity = state.status_opacity();
-        if opacity > 0.5 {
-            theme.success // 高亮显示
-        } else {
-            theme.border // 淡出时变暗
+        let display_text = format!(" ✓ {}", msg.text);
+        let status = Paragraph::new(display_text)
+            .style(Style::default().fg(fg_color))
+            .bg(theme.status_bg);
+        frame.render_widget(status, area);
+        return;
+    }
+
+    // 绘制帮助提示（支持换行）
+    let items = get_status_help_items(state);
+    let item_lines = build_status_help_lines(&items, area.width as usize);
+
+    let key_style = Style::default().fg(theme.info);
+    let desc_style = Style::default().fg(theme.status_fg);
+    let sep_style = Style::default().fg(theme.border);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // 如果是 Shell 终端模式，添加提示文本
+    if state.focus == FocusArea::ShellTerminal {
+        let prefix = match state.language() {
+            crate::i18n::Language::English => " Interactive Shell - type freely ",
+            crate::i18n::Language::Chinese => " 交互终端 - 自由输入 ",
+        };
+        let mut spans = vec![Span::styled(prefix, desc_style)];
+
+        // 添加 Esc 提示
+        if let Some(first_line) = item_lines.first() {
+            if let Some((key, desc)) = first_line.first() {
+                spans.push(Span::styled("(", sep_style));
+                spans.push(Span::styled(*key, key_style));
+                spans.push(Span::styled(": ", sep_style));
+                spans.push(Span::styled(*desc, desc_style));
+                spans.push(Span::styled(")", sep_style));
+            }
         }
+        lines.push(Line::from(spans));
     } else {
-        theme.status_fg
-    };
+        // 普通模式，显示所有帮助项
+        for line_items in item_lines {
+            let mut spans: Vec<Span> = vec![Span::raw(" ")];
 
-    // 添加图标
-    let display_text = if is_message {
-        format!(" ✓ {}", status_text)
-    } else {
-        status_text
-    };
+            for (i, (key, desc)) in line_items.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::styled(" | ", sep_style));
+                }
+                spans.push(Span::styled(*key, key_style));
+                spans.push(Span::styled(": ", sep_style));
+                spans.push(Span::styled(*desc, desc_style));
+            }
 
-    let status = Paragraph::new(display_text)
-        .style(Style::default().fg(fg_color))
-        .bg(theme.status_bg);
+            lines.push(Line::from(spans));
+        }
+    }
+
+    let status = Paragraph::new(lines).bg(theme.status_bg);
     frame.render_widget(status, area);
 }
 
@@ -234,7 +352,7 @@ fn draw_confirm_popup(frame: &mut Frame, state: &AppState, message: &str, theme:
 }
 
 /// 帮助弹窗
-pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
+pub fn draw_help_popup(frame: &mut Frame, state: &mut AppState, theme: &Theme) {
     let i18n = state.i18n();
     let area = centered_rect(55, 80, frame.area());
 
@@ -374,7 +492,12 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
     let total_lines = lines.len();
     let visible_height = inner.height as usize;
     let max_scroll = total_lines.saturating_sub(visible_height);
-    let scroll_offset = (state.help_scroll_offset as usize).min(max_scroll);
+
+    // 限制目标位置不超过最大滚动值（避免过度滚动）
+    state.help_scroll.clamp_target(max_scroll as f32);
+
+    // 使用平滑滚动的当前位置
+    let scroll_offset = state.help_scroll.position();
 
     // 渲染内容（带滚动）
     let paragraph = Paragraph::new(lines).scroll((scroll_offset as u16, 0));

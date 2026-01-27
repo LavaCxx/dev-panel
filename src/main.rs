@@ -97,7 +97,7 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
 
         // 渲染 UI
         terminal.draw(|frame| {
-            draw_ui(frame, &state, &theme);
+            draw_ui(frame, &mut state, &theme);
         })?;
 
         // 检查是否应该退出
