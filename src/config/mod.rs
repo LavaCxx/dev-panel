@@ -49,6 +49,9 @@ pub struct AppSettings {
     /// Windows Shell 选择（仅 Windows 有效）
     #[serde(default)]
     pub windows_shell: WindowsShell,
+    /// 是否已显示过首次启动设置引导
+    #[serde(default)]
+    pub first_run_shown: bool,
 }
 
 impl Default for AppSettings {
@@ -58,6 +61,7 @@ impl Default for AppSettings {
             default_runner: "pnpm".to_string(),
             language: Language::default(),
             windows_shell: WindowsShell::default(),
+            first_run_shown: false,
         }
     }
 }

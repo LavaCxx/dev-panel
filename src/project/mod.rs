@@ -77,6 +77,8 @@ pub struct Project {
     pub shell_pty: Option<PtyHandle>,
     /// Dev Terminal 滚动偏移量（用于查看历史 log）
     pub dev_scroll_offset: usize,
+    /// Shell Terminal 滚动偏移量（用于查看历史）
+    pub shell_scroll_offset: usize,
     /// Dev Server 启动时间
     pub dev_started_at: Option<Instant>,
 }
@@ -99,6 +101,7 @@ impl Project {
             dev_pty: None,
             shell_pty: None,
             dev_scroll_offset: 0,
+            shell_scroll_offset: 0,
             dev_started_at: None,
         }
     }

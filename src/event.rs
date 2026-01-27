@@ -85,7 +85,10 @@ fn handle_mouse_event(
                     }
                 }
                 FocusArea::ShellTerminal => {
-                    // Shell Terminal 暂不支持滚动
+                    // Shell Terminal 向上滚动（查看历史）
+                    if let Some(project) = state.active_project_mut() {
+                        project.shell_scroll_offset = project.shell_scroll_offset.saturating_add(3);
+                    }
                 }
             }
             Ok(true)
@@ -102,7 +105,10 @@ fn handle_mouse_event(
                     }
                 }
                 FocusArea::ShellTerminal => {
-                    // Shell Terminal 暂不支持滚动
+                    // Shell Terminal 向下滚动（回到最新）
+                    if let Some(project) = state.active_project_mut() {
+                        project.shell_scroll_offset = project.shell_scroll_offset.saturating_sub(3);
+                    }
                 }
             }
             Ok(true)
@@ -156,6 +162,8 @@ fn handle_normal_mode(
                 let data = key_to_bytes(&key);
                 if !data.is_empty() {
                     if let Some(project) = state.active_project_mut() {
+                        // 用户输入时自动回到底部（重置滚动偏移）
+                        project.shell_scroll_offset = 0;
                         if let Some(ref mut pty) = project.shell_pty {
                             pty.send_input(&data)?;
                         }
@@ -209,6 +217,11 @@ fn handle_normal_mode(
                 if let Some(project) = state.active_project_mut() {
                     project.dev_scroll_offset = 0;
                 }
+                return Ok(true);
+            }
+            // z 切换面板布局（最大化/平分）
+            KeyCode::Char('z') => {
+                state.toggle_panel_layout();
                 return Ok(true);
             }
             _ => {
@@ -367,6 +380,10 @@ fn handle_normal_mode(
                 let msg = state.i18n().no_project().to_string();
                 state.set_status(&msg);
             }
+        }
+        // z 切换面板布局（最大化/平分）
+        KeyCode::Char('z') => {
+            state.toggle_panel_layout();
         }
         _ => {}
     }
@@ -593,7 +610,15 @@ fn handle_edit_alias_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result
 fn handle_help_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<bool> {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => {
+            state.help_scroll_offset = 0; // 退出时重置滚动位置
             state.exit_mode();
+        }
+        // j/k 或方向键滚动
+        KeyCode::Char('j') | KeyCode::Down => {
+            state.help_scroll_offset = state.help_scroll_offset.saturating_add(1);
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            state.help_scroll_offset = state.help_scroll_offset.saturating_sub(1);
         }
         _ => {}
     }
@@ -606,6 +631,10 @@ fn handle_settings_mode(state: &mut AppState, key: KeyEvent) -> anyhow::Result<b
 
     match key.code {
         KeyCode::Esc | KeyCode::Char(',') => {
+            // 首次启动引导完成后标记为已显示
+            if !state.config.settings.first_run_shown {
+                state.config.settings.first_run_shown = true;
+            }
             state.exit_mode();
         }
         KeyCode::Char('j') | KeyCode::Down => {

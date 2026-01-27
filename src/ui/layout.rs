@@ -1,10 +1,10 @@
 //! 布局管理模块
 //! 负责主界面的布局划分
 
-use crate::app::{AppMode, AppState, FocusArea};
+use crate::app::{AppMode, AppState, FocusArea, PanelLayout};
 use crate::ui::{
-    draw_command_palette, draw_dir_browser, draw_input_popup, draw_settings_popup, draw_sidebar,
-    draw_terminal_panel, Theme,
+    draw_command_palette, draw_dir_browser, draw_input_popup, draw_scrollbar, draw_settings_popup,
+    draw_sidebar, draw_terminal_panel, ScrollInfo, Theme,
 };
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -42,24 +42,25 @@ pub fn draw_ui(frame: &mut Frame, state: &AppState, theme: &Theme) {
     draw_sidebar(frame, content_chunks[0], state, theme);
 
     // 右侧工作区：上方 Dev Terminal + 下方 Shell Terminal
+    // 根据面板布局模式调整高度比例
+    let work_constraints = match state.panel_layout {
+        PanelLayout::Split => [Constraint::Percentage(50), Constraint::Percentage(50)],
+        PanelLayout::DevMax => [Constraint::Min(3), Constraint::Length(3)], // Shell 只显示标题栏
+        PanelLayout::ShellMax => [Constraint::Length(3), Constraint::Min(3)], // Dev 只显示标题栏
+    };
     let work_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(50), // Dev Terminal
-            Constraint::Percentage(50), // Shell Terminal
-        ])
+        .constraints(work_constraints)
         .split(content_chunks[1]);
 
     let i18n = state.i18n();
 
-    // Dev Terminal 标题（如果暂停则显示状态，如果滚动则显示提示）
+    // Dev Terminal 标题（如果暂停则显示状态）
     let (dev_title, dev_scroll_offset) = if let Some(project) = state.active_project() {
         let scroll = project.dev_scroll_offset;
         let title = if let Some(ref pty) = project.dev_pty {
             if pty.suspended {
                 format!("{} [{}]", i18n.dev_server(), i18n.paused())
-            } else if scroll > 0 {
-                format!("{} [↑{}]", i18n.dev_server(), scroll)
             } else {
                 i18n.dev_server().to_string()
             }
@@ -84,6 +85,12 @@ pub fn draw_ui(frame: &mut Frame, state: &AppState, theme: &Theme) {
         theme,
     );
 
+    // Shell Terminal 滚动偏移量
+    let shell_scroll_offset = state
+        .active_project()
+        .map(|p| p.shell_scroll_offset)
+        .unwrap_or(0);
+
     // 绘制 Shell Terminal（交互式，聚焦时显示光标）
     draw_terminal_panel(
         frame,
@@ -92,7 +99,7 @@ pub fn draw_ui(frame: &mut Frame, state: &AppState, theme: &Theme) {
         state.active_project().and_then(|p| p.shell_pty.as_ref()),
         state.focus == FocusArea::ShellTerminal,
         true, // Shell Terminal 是交互式的，聚焦时显示光标
-        0,    // Shell 不滚动
+        shell_scroll_offset,
         &i18n,
         theme,
     );
@@ -229,7 +236,7 @@ fn draw_confirm_popup(frame: &mut Frame, state: &AppState, message: &str, theme:
 /// 帮助弹窗
 pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
     let i18n = state.i18n();
-    let area = centered_rect(55, 70, frame.area());
+    let area = centered_rect(55, 80, frame.area());
 
     frame.render_widget(Clear, area);
 
@@ -266,6 +273,12 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
                 ("  x", "Send interrupt (Ctrl+C)"),
                 ("  p", "Pause/Resume (freeze)"),
                 ("", ""),
+                ("DEV LOG VIEW (click Dev panel)", ""),
+                ("  j/k/↑/↓", "Scroll log"),
+                ("  PgUp/PgDn", "Fast scroll"),
+                ("  Home", "Jump to latest"),
+                ("  Esc", "Exit log view"),
+                ("", ""),
                 ("INTERACTIVE SHELL", "─────────────────"),
                 ("  R (Shift+r)", "Run command in shell"),
                 ("  All keys", "Sent to shell directly"),
@@ -278,6 +291,7 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
                 ("  d", "Delete project"),
                 ("", ""),
                 ("GENERAL", "───────"),
+                ("  z", "Toggle panel layout"),
                 ("  ,", "Open settings"),
                 ("  q/Ctrl+C", "Quit application"),
                 ("  ?", "Toggle this help"),
@@ -298,6 +312,12 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
                 ("  x", "发送中断 (Ctrl+C)"),
                 ("  p", "暂停/恢复 (冻结进程)"),
                 ("", ""),
+                ("日志查看 (点击开发服务面板)", ""),
+                ("  j/k/↑/↓", "滚动日志"),
+                ("  PgUp/PgDn", "快速滚动"),
+                ("  Home", "跳到最新"),
+                ("  Esc", "退出查看"),
+                ("", ""),
                 ("交互终端", "────────"),
                 ("  R (Shift+r)", "在终端运行命令"),
                 ("  所有按键", "直接发送给终端"),
@@ -310,6 +330,7 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
                 ("  d", "删除项目"),
                 ("", ""),
                 ("通用", "────"),
+                ("  z", "切换面板布局"),
                 ("  ,", "打开设置"),
                 ("  q/Ctrl+C", "退出程序"),
                 ("  ?", "帮助"),
@@ -349,8 +370,19 @@ pub fn draw_help_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
             .add_modifier(Modifier::DIM),
     )]));
 
-    let paragraph = Paragraph::new(lines);
+    // 计算滚动信息
+    let total_lines = lines.len();
+    let visible_height = inner.height as usize;
+    let max_scroll = total_lines.saturating_sub(visible_height);
+    let scroll_offset = (state.help_scroll_offset as usize).min(max_scroll);
+
+    // 渲染内容（带滚动）
+    let paragraph = Paragraph::new(lines).scroll((scroll_offset as u16, 0));
     frame.render_widget(paragraph, inner);
+
+    // 绘制滚动条
+    let scroll_info = ScrollInfo::new(total_lines, visible_height, scroll_offset);
+    draw_scrollbar(frame, inner, &scroll_info, theme);
 }
 
 /// 计算居中矩形（使用百分比）

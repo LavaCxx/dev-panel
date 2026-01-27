@@ -55,6 +55,12 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
     // 初始化应用状态
     let mut state = AppState::new(config.clone());
 
+    // 首次启动时自动显示设置弹窗，让用户知道可以修改语言等选项
+    if !state.config.settings.first_run_shown {
+        state.mode = app::AppMode::Settings;
+        state.settings_idx = 0;
+    }
+
     // 从配置加载项目
     for project_config in &config.projects {
         let path = PathBuf::from(&project_config.path);

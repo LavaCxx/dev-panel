@@ -109,9 +109,11 @@ impl I18n {
     pub fn status_hint_sidebar(&self) -> &'static str {
         match self.lang {
             Language::English => {
-                " Tab: Project | Enter: Shell | r: Run | s: Stop | ,: Settings | ?: Help"
+                " Tab: Project | Enter: Shell | r/R: Run | s: Stop | z: Layout | ?: Help"
             }
-            Language::Chinese => " Tab: 切换 | Enter: 终端 | r: 运行 | s: 停止 | ,: 设置 | ?: 帮助",
+            Language::Chinese => {
+                " Tab: 切换 | Enter: 终端 | r/R: 运行 | s: 停止 | z: 布局 | ?: 帮助"
+            }
         }
     }
 

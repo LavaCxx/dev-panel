@@ -3,7 +3,7 @@
 
 use crate::i18n::I18n;
 use crate::pty::PtyHandle;
-use crate::ui::Theme;
+use crate::ui::{draw_scrollbar, ScrollInfo, Theme};
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -57,29 +57,30 @@ pub fn draw_terminal_panel(
             // 获取光标位置（用于交互式终端）
             let (cursor_row, cursor_col) = screen.cursor_position();
 
-            // 计算起始行
-            let start_row = if is_interactive {
-                // 交互式终端：以光标位置为基准，确保光标始终可见
-                // 光标应该在可见区域内，通常在底部附近
-                if (cursor_row as usize) >= visible_rows {
-                    (cursor_row as usize) + 1 - visible_rows
-                } else {
-                    0
-                }
-            } else {
-                // 非交互式终端（Dev Server）：显示最后的内容
-                // 找到有内容的最后一行
-                let mut last_content_row = 0;
-                for row in 0..screen_rows {
-                    for col in 0..screen_cols {
-                        if let Some(cell) = screen.cell(row as u16, col as u16) {
-                            if !cell.contents().is_empty() && cell.contents() != " " {
-                                last_content_row = row;
-                            }
+            // 找到有内容的最后一行（用于计算滚动）
+            let mut last_content_row = 0;
+            for row in 0..screen_rows {
+                for col in 0..screen_cols {
+                    if let Some(cell) = screen.cell(row as u16, col as u16) {
+                        if !cell.contents().is_empty() && cell.contents() != " " {
+                            last_content_row = row;
                         }
                     }
                 }
+            }
 
+            // 计算起始行
+            let start_row = if is_interactive {
+                // 交互式终端：以光标位置为基准
+                let base_start = if (cursor_row as usize) >= visible_rows {
+                    (cursor_row as usize) + 1 - visible_rows
+                } else {
+                    0
+                };
+                // 应用滚动偏移（向上滚动查看历史）
+                base_start.saturating_sub(scroll_offset)
+            } else {
+                // 非交互式终端（Dev Server）：显示最后的内容
                 // 计算起始行（考虑滚动偏移）
                 let base_start = if last_content_row >= visible_rows {
                     last_content_row + 1 - visible_rows
@@ -143,6 +144,21 @@ pub fn draw_terminal_panel(
             } else {
                 let paragraph = Paragraph::new(lines);
                 frame.render_widget(paragraph, inner);
+            }
+
+            // 绘制滚动条（如果有内容需要滚动）
+            let total_lines = last_content_row + 1;
+            if total_lines > visible_rows {
+                let scroll_position = if is_interactive {
+                    // 交互式终端：滚动位置基于光标位置
+                    start_row
+                } else {
+                    // 非交互式终端：滚动位置基于用户滚动偏移
+                    let max_scroll = total_lines.saturating_sub(visible_rows);
+                    max_scroll.saturating_sub(scroll_offset)
+                };
+                let scroll_info = ScrollInfo::new(total_lines, visible_rows, scroll_position);
+                draw_scrollbar(frame, inner, &scroll_info, theme);
             }
 
             // 在聚焦状态下显示光标
