@@ -2,6 +2,7 @@
 //! 显示可执行的命令列表
 
 use crate::app::AppState;
+use crate::i18n::I18n;
 use crate::project::CommandType;
 use crate::ui::{centered_rect, draw_scrollbar, ScrollInfo, Theme};
 use ratatui::{
@@ -12,14 +13,14 @@ use ratatui::{
 };
 
 /// 绘制命令面板
-pub fn draw_command_palette(frame: &mut Frame, state: &AppState, theme: &Theme) {
+pub fn draw_command_palette(frame: &mut Frame, state: &AppState, i18n: &I18n, theme: &Theme) {
     let area = centered_rect(60, 50, frame.area());
 
     // 清除背景
     frame.render_widget(Clear, area);
 
     let block = Block::default()
-        .title(" Run Command ")
+        .title(i18n.run_command())
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.border_focused))
@@ -78,20 +79,12 @@ pub fn draw_command_palette(frame: &mut Frame, state: &AppState, theme: &Theme) 
         })
         .collect();
 
-    // 添加 "Add Custom Command" 选项
-    let mut all_items = items;
-    all_items.push(ListItem::new(Line::from("")));
-    all_items.push(ListItem::new(Line::from(vec![Span::styled(
-        "[+] Add Custom Command (c)",
-        Style::default().fg(theme.success),
-    )])));
-
-    let list = List::new(all_items);
+    let list = List::new(items);
 
     let mut list_state = ListState::default();
     let mut scroll_offset = 0usize;
     let visible_height = inner.height as usize;
-    let total_items = commands.len() + 2; // 命令数 + 空行 + "Add Custom Command"
+    let total_items = commands.len();
 
     let selected_idx = state.command_palette_idx;
     list_state.select(Some(selected_idx));

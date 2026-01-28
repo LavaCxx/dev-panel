@@ -121,7 +121,7 @@ pub fn draw_ui(frame: &mut Frame, state: &mut AppState, theme: &Theme) {
     let i18n = state.i18n();
     match &state.mode {
         AppMode::CommandPalette => {
-            draw_command_palette(frame, state, theme);
+            draw_command_palette(frame, state, &i18n, theme);
         }
         AppMode::AddProject => {
             draw_input_popup(
