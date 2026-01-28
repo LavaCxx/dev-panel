@@ -58,10 +58,17 @@ pub fn draw_ui(frame: &mut Frame, state: &mut AppState, theme: &Theme) {
 
     let i18n = state.i18n();
 
-    // Dev Terminal 标题（如果暂停则显示状态）
+    // Dev Terminal 标题（显示状态：暂停/资源释放中）
     let (dev_title, dev_scroll_offset) = if let Some(project) = state.active_project() {
         let scroll = project.dev_scroll_offset;
-        let title = if let Some(ref pty) = project.dev_pty {
+        let title = if state.is_project_waiting_cleanup(state.active_project_idx) {
+            // 正在等待 PTY 资源释放
+            if let Some(status) = state.cleanup_status_text() {
+                format!("{} [{}]", i18n.dev_server(), status)
+            } else {
+                i18n.dev_server().to_string()
+            }
+        } else if let Some(ref pty) = project.dev_pty {
             if pty.suspended {
                 format!("{} [{}]", i18n.dev_server(), i18n.paused())
             } else {

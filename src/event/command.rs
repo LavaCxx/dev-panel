@@ -1,17 +1,71 @@
 //! 命令执行模块
 //! 负责在 Dev Terminal 和 Shell Terminal 中执行命令
 
-use crate::app::AppState;
+use crate::app::{AppState, PendingDevCommand, PtyCleanupState};
 use crate::project::{detect_package_manager, CommandType};
 use crate::pty::PtyManager;
 
-/// 在 Dev Terminal 执行命令（覆盖现有进程）
-pub fn execute_command_in_dev(
+/// 请求在 Dev Terminal 执行命令
+/// 如果有旧进程正在运行，会启动资源释放流程并缓存命令
+/// 返回 true 表示命令已开始执行，false 表示命令已缓存等待执行
+pub fn request_execute_in_dev(state: &mut AppState) -> bool {
+    let command_idx = state.command_palette_idx;
+    let project_idx = state.active_project_idx;
+
+    // 检查是否已经在等待资源释放
+    if state.is_waiting_for_cleanup() {
+        // 更新待执行的命令（替换之前缓存的）
+        state.pending_dev_command = Some(PendingDevCommand {
+            command_idx,
+            project_idx,
+        });
+        log::info!("Command queued, waiting for PTY cleanup");
+        return false;
+    }
+
+    // 检查是否有旧进程需要清理
+    let old_pid = state
+        .active_project()
+        .and_then(|p| p.dev_pty.as_ref())
+        .and_then(|pty| pty.pid);
+
+    if let Some(pid) = old_pid {
+        // 有旧进程，启动清理流程
+        // 先停止旧进程
+        if let Some(project) = state.active_project_mut() {
+            project.dev_pty = None; // 触发 Drop，调用 kill()
+            project.mark_dev_stopped();
+        }
+
+        // 设置清理状态和待执行命令
+        state.pty_cleanup = Some(PtyCleanupState::new(pid, project_idx));
+        state.pending_dev_command = Some(PendingDevCommand {
+            command_idx,
+            project_idx,
+        });
+
+        log::info!("Started PTY cleanup for pid {}, command queued", pid);
+
+        // 更新状态提示
+        match state.language() {
+            crate::i18n::Language::English => state.set_status("Releasing resources..."),
+            crate::i18n::Language::Chinese => state.set_status("正在释放资源..."),
+        }
+
+        return false;
+    }
+
+    // 没有旧进程，可以直接执行
+    true
+}
+
+/// 实际执行 Dev 命令（内部使用）
+/// 在确认资源已释放后调用
+pub fn do_execute_command_in_dev(
     state: &mut AppState,
     pty_manager: &PtyManager,
+    command_idx: usize,
 ) -> anyhow::Result<()> {
-    let command_idx = state.command_palette_idx;
-
     let command_info = {
         if let Some(project) = state.active_project() {
             let commands = project.get_all_commands();
@@ -32,11 +86,6 @@ pub fn execute_command_in_dev(
     };
 
     if let Some((working_dir, full_command, cmd_name)) = command_info {
-        // 先停止现有的 Dev 进程
-        if let Some(project) = state.active_project_mut() {
-            project.dev_pty = None;
-        }
-
         let pty_id = format!("dev-{}", uuid::Uuid::new_v4());
         let pty_tx = state.pty_tx.clone();
 
@@ -61,6 +110,39 @@ pub fn execute_command_in_dev(
         state.set_status(&format!("Running: {}", cmd_name));
     }
     Ok(())
+}
+
+/// 在 Dev Terminal 执行命令（覆盖现有进程）
+/// 这是原有的直接执行版本，用于没有旧进程时的情况
+pub fn execute_command_in_dev(
+    state: &mut AppState,
+    pty_manager: &PtyManager,
+) -> anyhow::Result<()> {
+    let command_idx = state.command_palette_idx;
+    do_execute_command_in_dev(state, pty_manager, command_idx)
+}
+
+/// 执行待处理的 Dev 命令（如果有）
+/// 在资源释放后由主循环调用
+pub fn execute_pending_dev_command(
+    state: &mut AppState,
+    pty_manager: &PtyManager,
+) -> anyhow::Result<bool> {
+    if let Some(pending) = state.pending_dev_command.take() {
+        // 确保项目索引仍然有效
+        if pending.project_idx == state.active_project_idx {
+            log::info!("Executing pending command (idx: {})", pending.command_idx);
+            do_execute_command_in_dev(state, pty_manager, pending.command_idx)?;
+            return Ok(true);
+        } else {
+            log::warn!(
+                "Pending command project mismatch: {} vs {}",
+                pending.project_idx,
+                state.active_project_idx
+            );
+        }
+    }
+    Ok(false)
 }
 
 /// 在 Interactive Shell 执行命令

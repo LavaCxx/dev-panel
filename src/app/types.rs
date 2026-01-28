@@ -1,6 +1,8 @@
 //! 应用类型定义模块
 //! 包含各种枚举和简单类型定义
 
+use std::time::Instant;
+
 /// 焦点区域枚举
 /// 用于追踪当前用户焦点所在的 UI 区域
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -74,4 +76,48 @@ pub enum AppMode {
     Help,
     Settings,
     Confirm(String), // 确认对话框，参数为确认消息
+}
+
+/// PTY 资源清理状态（Windows 专用）
+/// 用于追踪 ConPTY 资源释放进度
+#[derive(Debug, Clone)]
+pub struct PtyCleanupState {
+    /// 开始清理的时间
+    pub started_at: Instant,
+    /// 旧进程的 PID（用于检测是否已终止）
+    pub old_pid: u32,
+    /// 对应的项目索引
+    pub project_idx: usize,
+    /// 已经轮询的次数
+    pub poll_count: u32,
+}
+
+impl PtyCleanupState {
+    /// 创建新的清理状态
+    pub fn new(old_pid: u32, project_idx: usize) -> Self {
+        Self {
+            started_at: Instant::now(),
+            old_pid,
+            project_idx,
+            poll_count: 0,
+        }
+    }
+
+    /// 获取已等待的时间（毫秒）
+    pub fn elapsed_ms(&self) -> u64 {
+        self.started_at.elapsed().as_millis() as u64
+    }
+
+    /// 最大等待时间（毫秒）
+    pub const MAX_WAIT_MS: u64 = 3000;
+}
+
+/// 待执行的命令
+/// 当 PTY 资源正在释放时，缓存用户请求的命令
+#[derive(Debug, Clone)]
+pub struct PendingDevCommand {
+    /// 命令在命令面板中的索引
+    pub command_idx: usize,
+    /// 项目索引
+    pub project_idx: usize,
 }

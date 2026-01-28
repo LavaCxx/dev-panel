@@ -194,9 +194,10 @@ fn build_help_lines<'a>(
     available_width: usize,
     theme: &Theme,
 ) -> Vec<Line<'a>> {
+    // 按键提示使用蓝色（与主界面一致），描述和分隔符使用正常前景色
     let key_style = Style::default().fg(theme.info);
     let desc_style = Style::default().fg(theme.fg);
-    let sep_style = Style::default().fg(theme.border);
+    let sep_style = Style::default().fg(theme.fg);
 
     let mut lines: Vec<Line> = Vec::new();
     let mut current_spans: Vec<Span> = vec![Span::raw(" ")];

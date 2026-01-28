@@ -6,7 +6,7 @@
 //! - Dev Server: 只显示命令输出，不需要焦点，r 运行命令，s 停止
 //! - Interactive Shell: 完全交互式，Enter 进入
 
-mod command;
+pub mod command;
 mod helpers;
 mod keyboard;
 mod mouse;

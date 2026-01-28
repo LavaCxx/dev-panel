@@ -95,6 +95,15 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
         // 更新动画帧和过期消息
         state.tick();
 
+        // 轮询 PTY 资源清理状态（Windows 专用）
+        // 如果资源已释放，执行待处理的命令
+        if state.poll_pty_cleanup() {
+            if let Err(e) = event::command::execute_pending_dev_command(&mut state, &pty_manager) {
+                log::error!("Failed to execute pending command: {}", e);
+                state.set_status(&format!("Error: {}", e));
+            }
+        }
+
         // 渲染 UI
         terminal.draw(|frame| {
             draw_ui(frame, &mut state, &theme);

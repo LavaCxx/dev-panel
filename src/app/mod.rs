@@ -65,6 +65,12 @@ pub struct AppState {
     pub panel_layout: PanelLayout,
     /// 帮助弹窗平滑滚动状态
     pub help_scroll: SmoothScroll,
+    /// PTY 资源清理状态（Windows 专用）
+    /// 当停止 Dev 进程后，等待 ConPTY 资源释放
+    pub pty_cleanup: Option<PtyCleanupState>,
+    /// 待执行的 Dev 命令
+    /// 当 PTY 资源正在释放时，缓存用户请求的命令
+    pub pending_dev_command: Option<PendingDevCommand>,
 }
 
 impl AppState {
@@ -100,6 +106,8 @@ impl AppState {
             resource_update_frame: 0,
             panel_layout: PanelLayout::default(),
             help_scroll: SmoothScroll::new(),
+            pty_cleanup: None,
+            pending_dev_command: None,
         }
     }
 
@@ -306,5 +314,84 @@ impl AppState {
                 }
             }
         }
+    }
+
+    /// 检查是否正在等待 PTY 资源释放
+    pub fn is_waiting_for_cleanup(&self) -> bool {
+        self.pty_cleanup.is_some()
+    }
+
+    /// 检查指定项目是否正在等待资源释放
+    pub fn is_project_waiting_cleanup(&self, project_idx: usize) -> bool {
+        self.pty_cleanup
+            .as_ref()
+            .map(|c| c.project_idx == project_idx)
+            .unwrap_or(false)
+    }
+
+    /// 获取清理状态信息（用于 UI 显示）
+    pub fn cleanup_status_text(&self) -> Option<String> {
+        self.pty_cleanup.as_ref().map(|c| {
+            let elapsed = c.elapsed_ms();
+            match self.language() {
+                Language::English => format!("Releasing... ({:.1}s)", elapsed as f64 / 1000.0),
+                Language::Chinese => format!("释放中... ({:.1}s)", elapsed as f64 / 1000.0),
+            }
+        })
+    }
+
+    /// 轮询检测 PTY 资源是否已释放（Windows 专用）
+    /// 返回 true 表示资源已释放，可以执行待处理的命令
+    #[cfg(windows)]
+    pub fn poll_pty_cleanup(&mut self) -> bool {
+        use sysinfo::ProcessesToUpdate;
+
+        let cleanup = match &mut self.pty_cleanup {
+            Some(c) => c,
+            None => return false,
+        };
+
+        cleanup.poll_count += 1;
+
+        // 检查是否超时
+        if cleanup.elapsed_ms() > PtyCleanupState::MAX_WAIT_MS {
+            log::warn!(
+                "PTY cleanup timeout after {}ms, proceeding anyway",
+                cleanup.elapsed_ms()
+            );
+            self.pty_cleanup = None;
+            return true;
+        }
+
+        // 刷新进程信息
+        self.system.refresh_processes(ProcessesToUpdate::All, false);
+
+        // 检查旧进程是否已经不存在
+        let old_pid = sysinfo::Pid::from_u32(cleanup.old_pid);
+        let process_gone = self.system.process(old_pid).is_none();
+
+        if process_gone {
+            log::info!(
+                "PTY process {} terminated after {}ms ({} polls)",
+                cleanup.old_pid,
+                cleanup.elapsed_ms(),
+                cleanup.poll_count
+            );
+            self.pty_cleanup = None;
+            return true;
+        }
+
+        false
+    }
+
+    /// 非 Windows 平台不需要轮询
+    #[cfg(not(windows))]
+    pub fn poll_pty_cleanup(&mut self) -> bool {
+        // 非 Windows 平台直接清除状态
+        if self.pty_cleanup.is_some() {
+            self.pty_cleanup = None;
+            return true;
+        }
+        false
     }
 }

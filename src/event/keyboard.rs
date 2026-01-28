@@ -6,7 +6,7 @@ use crate::pty::PtyManager;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::path::PathBuf;
 
-use super::command::{execute_command_in_dev, execute_command_in_shell};
+use super::command::{execute_command_in_dev, execute_command_in_shell, request_execute_in_dev};
 use super::helpers::{key_to_bytes, start_shell_for_active_project};
 
 /// 处理键盘事件
@@ -297,7 +297,13 @@ fn handle_command_palette_mode(
             // 根据 command_target 决定执行位置
             match state.command_target {
                 CommandTarget::DevTerminal => {
-                    execute_command_in_dev(state, pty_manager)?;
+                    // 使用智能等待机制：如果有旧进程，会缓存命令等待资源释放
+                    let can_execute_now = request_execute_in_dev(state);
+                    if can_execute_now {
+                        // 没有旧进程，直接执行
+                        execute_command_in_dev(state, pty_manager)?;
+                    }
+                    // 如果返回 false，命令已被缓存，会在资源释放后自动执行
                 }
                 CommandTarget::ShellTerminal => {
                     execute_command_in_shell(state, pty_manager)?;

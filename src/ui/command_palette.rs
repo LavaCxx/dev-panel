@@ -3,7 +3,7 @@
 
 use crate::app::AppState;
 use crate::project::CommandType;
-use crate::ui::{centered_rect, Theme};
+use crate::ui::{centered_rect, draw_scrollbar, ScrollInfo, Theme};
 use ratatui::{
     style::{Modifier, Style},
     text::{Line, Span},
@@ -89,7 +89,32 @@ pub fn draw_command_palette(frame: &mut Frame, state: &AppState, theme: &Theme) 
     let list = List::new(all_items);
 
     let mut list_state = ListState::default();
-    list_state.select(Some(state.command_palette_idx));
+    let mut scroll_offset = 0usize;
+    let visible_height = inner.height as usize;
+    let total_items = commands.len() + 2; // 命令数 + 空行 + "Add Custom Command"
+
+    let selected_idx = state.command_palette_idx;
+    list_state.select(Some(selected_idx));
+
+    // 计算合适的偏移量，使选中项尽量居中
+    if visible_height > 0 && total_items > visible_height {
+        let half_height = visible_height / 2;
+
+        // 计算理想的偏移量：selected_idx - half_height
+        let ideal_offset = selected_idx.saturating_sub(half_height);
+
+        // 确保偏移量不会导致列表底部出现空白
+        let max_offset = total_items.saturating_sub(visible_height);
+        scroll_offset = ideal_offset.min(max_offset);
+
+        *list_state.offset_mut() = scroll_offset;
+    }
 
     frame.render_stateful_widget(list, inner, &mut list_state);
+
+    // 绘制滚动条
+    if total_items > visible_height {
+        let scroll_info = ScrollInfo::new(total_items, visible_height, scroll_offset);
+        draw_scrollbar(frame, inner, &scroll_info, theme);
+    }
 }

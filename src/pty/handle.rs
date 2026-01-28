@@ -53,6 +53,7 @@ impl PtyHandle {
 
     /// 更新进程资源使用信息
     /// 会统计整个进程树（包括所有子进程）的资源使用
+    /// CPU 使用率会归一化到 0-100% 范围（按 CPU 核心数计算）
     pub fn update_resource_usage(&mut self, system: &sysinfo::System) {
         if let Some(pid) = self.pid {
             let pid = sysinfo::Pid::from_u32(pid);
@@ -81,7 +82,12 @@ impl PtyHandle {
                 }
             }
 
-            self.resource_usage.cpu_percent = total_cpu;
+            // 归一化 CPU 使用率：sysinfo 的 cpu_usage() 返回的是单核百分比
+            // 多进程累加后可能超过 100%，这里除以 CPU 核心数得到系统整体使用率
+            let cpu_count = system.cpus().len().max(1) as f32;
+            let normalized_cpu = total_cpu / cpu_count;
+
+            self.resource_usage.cpu_percent = normalized_cpu;
             self.resource_usage.memory_bytes = total_memory;
         }
     }
@@ -351,9 +357,10 @@ impl PtyHandle {
                             }
                         }
 
-                        // 等待所有进程终止（最多 500ms）
+                        // 等待所有进程终止（最多 1000ms）
+                        // 增加等待时间以确保 ConPTY 资源有足够时间释放
                         for handle in &handles_to_wait {
-                            let _ = WaitForSingleObject(*handle, 500);
+                            let _ = WaitForSingleObject(*handle, 1000);
                         }
 
                         // 关闭所有句柄
@@ -362,8 +369,9 @@ impl PtyHandle {
                         }
                     }
 
-                    // 额外等待一小段时间，确保系统资源完全释放
-                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    // 额外等待一段时间，确保 ConPTY 子系统完全释放资源
+                    // 这对于避免快速连续创建 PTY 时的 0xc0000142 错误很重要
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
             }
         }

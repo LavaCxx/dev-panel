@@ -95,6 +95,7 @@ pub fn draw_settings_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
     frame.render_stateful_widget(list, content_area, &mut list_state);
 
     // 底部提示
+    // 按键部分使用醒目的黄色，描述部分使用较暗的颜色
     let hint_area = Rect {
         x: inner.x,
         y: inner.y + inner.height.saturating_sub(1),
@@ -102,9 +103,29 @@ pub fn draw_settings_popup(frame: &mut Frame, state: &AppState, theme: &Theme) {
         height: 1,
     };
 
-    let hint = Paragraph::new(i18n.settings_hint())
-        .style(Style::default().fg(theme.border))
-        .alignment(ratatui::layout::Alignment::Center);
+    let key_hint_style = Style::default().fg(theme.info).add_modifier(Modifier::BOLD);
+    let desc_hint_style = Style::default().fg(theme.fg);
+
+    let hint_spans = match state.language() {
+        crate::i18n::Language::English => vec![
+            Span::styled("↑/↓", key_hint_style),
+            Span::styled(": Navigate | ", desc_hint_style),
+            Span::styled("Enter", key_hint_style),
+            Span::styled(": Toggle | ", desc_hint_style),
+            Span::styled("Esc", key_hint_style),
+            Span::styled(": Close", desc_hint_style),
+        ],
+        crate::i18n::Language::Chinese => vec![
+            Span::styled("↑/↓", key_hint_style),
+            Span::styled(": 导航 | ", desc_hint_style),
+            Span::styled("Enter", key_hint_style),
+            Span::styled(": 切换 | ", desc_hint_style),
+            Span::styled("Esc", key_hint_style),
+            Span::styled(": 关闭", desc_hint_style),
+        ],
+    };
+
+    let hint = Paragraph::new(Line::from(hint_spans)).alignment(ratatui::layout::Alignment::Center);
 
     frame.render_widget(hint, hint_area);
 }
