@@ -121,3 +121,51 @@ pub struct PendingDevCommand {
     /// 项目索引
     pub project_idx: usize,
 }
+
+/// PTY 创建锁状态（Windows ConPTY 竞态保护）
+/// 用于防止多个 PTY 同时创建时的竞态条件
+#[derive(Debug, Clone)]
+pub struct PtyCreationLock {
+    /// 锁定开始时间
+    pub locked_at: Instant,
+    /// 锁定原因（用于调试）
+    pub reason: String,
+}
+
+impl PtyCreationLock {
+    /// 创建新的锁
+    pub fn new(reason: &str) -> Self {
+        Self {
+            locked_at: Instant::now(),
+            reason: reason.to_string(),
+        }
+    }
+
+    /// 获取已锁定的时间（毫秒）
+    pub fn elapsed_ms(&self) -> u64 {
+        self.locked_at.elapsed().as_millis() as u64
+    }
+
+    /// 检查锁是否已过期（冷却期结束）
+    /// Windows ConPTY 需要一定时间完成初始化
+    pub fn is_expired(&self) -> bool {
+        self.elapsed_ms() > Self::COOLDOWN_MS
+    }
+
+    /// PTY 创建后的冷却期（毫秒）
+    /// 给 ConPTY 足够的时间完成内部初始化
+    #[cfg(windows)]
+    pub const COOLDOWN_MS: u64 = 150;
+
+    /// 非 Windows 平台不需要冷却期
+    #[cfg(not(windows))]
+    pub const COOLDOWN_MS: u64 = 0;
+}
+
+/// 待处理的 Shell 请求
+/// 当 PTY 创建锁被占用时，缓存用户的 Shell 启动请求
+#[derive(Debug, Clone)]
+pub struct PendingShellRequest {
+    /// 项目索引
+    pub project_idx: usize,
+}

@@ -4,7 +4,7 @@ use crate::app::{AppState, FocusArea};
 use crate::pty::PtyManager;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// 为当前项目启动交互式 Shell
+/// 为当前项目启动交互式 Shell（带 ConPTY 竞态保护）
 pub fn start_shell_for_active_project(
     state: &mut AppState,
     pty_manager: &PtyManager,
@@ -26,6 +26,13 @@ pub fn start_shell_for_active_project(
 
     if let Some(path) = project_path {
         if needs_shell {
+            // 尝试获取 PTY 创建锁
+            if !state.try_acquire_pty_lock("shell") {
+                // 锁被占用，缓存请求
+                state.queue_shell_request(state.active_project_idx);
+                return Ok(());
+            }
+
             let pty_id = format!("shell-{}", uuid::Uuid::new_v4());
             let pty_tx = state.pty_tx.clone();
 
@@ -47,10 +54,14 @@ pub fn start_shell_for_active_project(
                     if let Some(project) = state.active_project_mut() {
                         project.shell_pty = Some(handle);
                     }
+                    // 创建成功，开始冷却期
+                    state.mark_pty_created("shell");
                     let msg = state.i18n().shell_started().to_string();
                     state.set_status(&msg);
                 }
                 Err(e) => {
+                    // 创建失败，释放锁
+                    state.pty_creation_lock = None;
                     state.set_status(&format!("Failed to start shell: {}", e));
                     return Ok(());
                 }
@@ -59,6 +70,41 @@ pub fn start_shell_for_active_project(
         state.focus = FocusArea::ShellTerminal;
     }
     Ok(())
+}
+
+/// 执行待处理的 Shell 请求（如果有）
+/// 在 PTY 创建锁释放后由主循环调用
+pub fn execute_pending_shell(
+    state: &mut AppState,
+    pty_manager: &PtyManager,
+) -> anyhow::Result<bool> {
+    if let Some(pending) = state.take_pending_shell() {
+        // 确保项目索引仍然有效
+        if pending.project_idx < state.projects.len() {
+            // 临时切换到目标项目
+            let current_idx = state.active_project_idx;
+            state.active_project_idx = pending.project_idx;
+
+            log::info!(
+                "Executing pending shell for project {}",
+                pending.project_idx
+            );
+            start_shell_for_active_project(state, pty_manager)?;
+
+            // 如果原来不在这个项目，恢复索引（但保持焦点在 Shell）
+            if current_idx != pending.project_idx {
+                // 用户可能期望留在请求的项目上，所以不恢复
+            }
+
+            return Ok(true);
+        } else {
+            log::warn!(
+                "Pending shell project index {} out of range",
+                pending.project_idx
+            );
+        }
+    }
+    Ok(false)
 }
 
 /// 将按键事件转换为终端字节序列

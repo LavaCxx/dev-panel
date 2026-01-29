@@ -7,6 +7,7 @@ use crate::pty::PtyManager;
 
 /// 请求在 Dev Terminal 执行命令
 /// 如果有旧进程正在运行，会启动资源释放流程并缓存命令
+/// 如果 PTY 创建锁被占用，也会缓存命令等待执行
 /// 返回 true 表示命令已开始执行，false 表示命令已缓存等待执行
 pub fn request_execute_in_dev(state: &mut AppState) -> bool {
     let command_idx = state.command_palette_idx;
@@ -20,6 +21,22 @@ pub fn request_execute_in_dev(state: &mut AppState) -> bool {
             project_idx,
         });
         log::info!("Command queued, waiting for PTY cleanup");
+        return false;
+    }
+
+    // 检查 PTY 创建锁状态（ConPTY 竞态保护）
+    if !state.can_create_pty() {
+        state.pending_dev_command = Some(PendingDevCommand {
+            command_idx,
+            project_idx,
+        });
+        log::info!("Command queued, waiting for PTY creation lock");
+
+        // 更新状态提示
+        match state.language() {
+            crate::i18n::Language::English => state.set_status("Waiting for PTY ready..."),
+            crate::i18n::Language::Chinese => state.set_status("等待 PTY 就绪..."),
+        }
         return false;
     }
 
@@ -55,7 +72,7 @@ pub fn request_execute_in_dev(state: &mut AppState) -> bool {
         return false;
     }
 
-    // 没有旧进程，可以直接执行
+    // 没有阻塞条件，可以直接执行
     true
 }
 
@@ -86,13 +103,27 @@ pub fn do_execute_command_in_dev(
     };
 
     if let Some((working_dir, full_command, cmd_name)) = command_info {
+        // 尝试获取 PTY 创建锁
+        if !state.try_acquire_pty_lock("dev") {
+            // 锁被占用，缓存命令
+            state.pending_dev_command = Some(PendingDevCommand {
+                command_idx,
+                project_idx: state.active_project_idx,
+            });
+            match state.language() {
+                crate::i18n::Language::English => state.set_status("Waiting for PTY ready..."),
+                crate::i18n::Language::Chinese => state.set_status("等待 PTY 就绪..."),
+            }
+            return Ok(());
+        }
+
         let pty_id = format!("dev-{}", uuid::Uuid::new_v4());
         let pty_tx = state.pty_tx.clone();
 
         #[cfg(windows)]
         let shell_config = state.config.settings.windows_shell;
 
-        let handle = pty_manager.run_shell_command(
+        let result = pty_manager.run_shell_command(
             &pty_id,
             &full_command,
             &working_dir,
@@ -101,13 +132,24 @@ pub fn do_execute_command_in_dev(
             pty_tx,
             #[cfg(windows)]
             shell_config,
-        )?;
+        );
 
-        if let Some(project) = state.active_project_mut() {
-            project.dev_pty = Some(handle);
-            project.mark_dev_started();
+        match result {
+            Ok(handle) => {
+                if let Some(project) = state.active_project_mut() {
+                    project.dev_pty = Some(handle);
+                    project.mark_dev_started();
+                }
+                // 创建成功，开始冷却期
+                state.mark_pty_created("dev");
+                state.set_status(&format!("Running: {}", cmd_name));
+            }
+            Err(e) => {
+                // 创建失败，释放锁
+                state.pty_creation_lock = None;
+                return Err(e);
+            }
         }
-        state.set_status(&format!("Running: {}", cmd_name));
     }
     Ok(())
 }
@@ -184,8 +226,18 @@ pub fn execute_command_in_shell(
             }
         };
 
-        // 如果 Shell 不存在，先启动
+        // 如果 Shell 不存在，先启动（带竞态保护）
         if needs_shell {
+            // 尝试获取 PTY 创建锁
+            if !state.try_acquire_pty_lock("shell-for-cmd") {
+                // 锁被占用，暂时无法创建 Shell
+                match state.language() {
+                    crate::i18n::Language::English => state.set_status("Waiting for PTY ready..."),
+                    crate::i18n::Language::Chinese => state.set_status("等待 PTY 就绪..."),
+                }
+                return Ok(());
+            }
+
             let pty_id = format!("shell-{}", uuid::Uuid::new_v4());
             let pty_tx = state.pty_tx.clone();
 
@@ -207,8 +259,12 @@ pub fn execute_command_in_shell(
                     if let Some(project) = state.active_project_mut() {
                         project.shell_pty = Some(handle);
                     }
+                    // 创建成功，开始冷却期
+                    state.mark_pty_created("shell-for-cmd");
                 }
                 Err(e) => {
+                    // 创建失败，释放锁
+                    state.pty_creation_lock = None;
                     state.set_status(&format!("Failed to start shell: {}", e));
                     return Ok(());
                 }

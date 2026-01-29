@@ -104,6 +104,25 @@ async fn run_app(config: AppConfig) -> anyhow::Result<()> {
             }
         }
 
+        // 轮询 PTY 创建锁状态（ConPTY 竞态保护）
+        // 如果锁已释放，执行待处理的 Shell 或 Dev 请求
+        if state.poll_pty_creation_lock() {
+            // 优先执行 Shell 请求
+            if let Err(e) = event::helpers::execute_pending_shell(&mut state, &pty_manager) {
+                log::error!("Failed to execute pending shell: {}", e);
+                state.set_status(&format!("Error: {}", e));
+            }
+            // 如果没有 Shell 请求，检查 Dev 命令
+            else if state.pending_dev_command.is_some() {
+                if let Err(e) =
+                    event::command::execute_pending_dev_command(&mut state, &pty_manager)
+                {
+                    log::error!("Failed to execute pending dev command: {}", e);
+                    state.set_status(&format!("Error: {}", e));
+                }
+            }
+        }
+
         // 渲染 UI
         terminal.draw(|frame| {
             draw_ui(frame, &mut state, &theme);

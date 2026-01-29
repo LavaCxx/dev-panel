@@ -71,6 +71,12 @@ pub struct AppState {
     /// 待执行的 Dev 命令
     /// 当 PTY 资源正在释放时，缓存用户请求的命令
     pub pending_dev_command: Option<PendingDevCommand>,
+    /// PTY 创建锁（ConPTY 竞态保护）
+    /// 防止多个 PTY 同时创建导致 0xc0000142 错误
+    pub pty_creation_lock: Option<PtyCreationLock>,
+    /// 待处理的 Shell 请求
+    /// 当 PTY 创建锁被占用时，缓存用户的 Shell 启动请求
+    pub pending_shell_request: Option<PendingShellRequest>,
 }
 
 impl AppState {
@@ -108,6 +114,8 @@ impl AppState {
             help_scroll: SmoothScroll::new(),
             pty_cleanup: None,
             pending_dev_command: None,
+            pty_creation_lock: None,
+            pending_shell_request: None,
         }
     }
 
@@ -393,5 +401,86 @@ impl AppState {
             return true;
         }
         false
+    }
+
+    // ========== PTY 创建锁相关方法（ConPTY 竞态保护）==========
+
+    /// 检查是否可以创建新的 PTY
+    /// 如果有锁且未过期，返回 false
+    pub fn can_create_pty(&self) -> bool {
+        match &self.pty_creation_lock {
+            Some(lock) => lock.is_expired(),
+            None => true,
+        }
+    }
+
+    /// 尝试获取 PTY 创建锁
+    /// 返回 true 表示成功获取锁，可以创建 PTY
+    /// 返回 false 表示锁被占用，需要等待
+    pub fn try_acquire_pty_lock(&mut self, reason: &str) -> bool {
+        // 先检查是否已有锁
+        if let Some(ref lock) = self.pty_creation_lock {
+            if !lock.is_expired() {
+                log::debug!(
+                    "PTY creation lock held by '{}', elapsed {}ms",
+                    lock.reason,
+                    lock.elapsed_ms()
+                );
+                return false;
+            }
+        }
+
+        // 获取锁
+        self.pty_creation_lock = Some(PtyCreationLock::new(reason));
+        log::debug!("PTY creation lock acquired: {}", reason);
+        true
+    }
+
+    /// 释放 PTY 创建锁（实际上是让锁自然过期）
+    /// 不直接清除锁，而是让冷却期自然结束
+    /// 这样可以确保 ConPTY 有足够时间完成初始化
+    pub fn mark_pty_created(&mut self, reason: &str) {
+        // 刷新锁的时间戳，开始新的冷却期
+        self.pty_creation_lock = Some(PtyCreationLock::new(reason));
+        log::debug!("PTY created, cooldown started: {}", reason);
+    }
+
+    /// 轮询 PTY 创建锁状态
+    /// 返回 true 表示锁已释放，可以执行待处理的请求
+    pub fn poll_pty_creation_lock(&mut self) -> bool {
+        match &self.pty_creation_lock {
+            Some(lock) if lock.is_expired() => {
+                log::debug!("PTY creation lock expired after {}ms", lock.elapsed_ms());
+                self.pty_creation_lock = None;
+                true
+            }
+            Some(_) => false,
+            None => {
+                // 没有锁，检查是否有待处理请求
+                self.pending_shell_request.is_some()
+            }
+        }
+    }
+
+    /// 检查是否有待处理的 Shell 请求
+    pub fn has_pending_shell(&self) -> bool {
+        self.pending_shell_request.is_some()
+    }
+
+    /// 缓存 Shell 请求
+    pub fn queue_shell_request(&mut self, project_idx: usize) {
+        self.pending_shell_request = Some(PendingShellRequest { project_idx });
+        log::info!("Shell request queued for project {}", project_idx);
+
+        // 更新状态提示
+        match self.language() {
+            Language::English => self.set_status("Waiting for PTY ready..."),
+            Language::Chinese => self.set_status("等待 PTY 就绪..."),
+        }
+    }
+
+    /// 取出待处理的 Shell 请求
+    pub fn take_pending_shell(&mut self) -> Option<PendingShellRequest> {
+        self.pending_shell_request.take()
     }
 }

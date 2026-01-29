@@ -7,7 +7,7 @@
 //! - Interactive Shell: 完全交互式，Enter 进入
 
 pub mod command;
-mod helpers;
+pub mod helpers;
 mod keyboard;
 mod mouse;
 
